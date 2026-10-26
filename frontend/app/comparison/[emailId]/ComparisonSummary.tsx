@@ -19,6 +19,34 @@ function correctness(match: boolean | null) {
   );
 }
 
+// Differences under this are within normal run-to-run network noise.
+const SIMILAR_LATENCY_MS = 100;
+
+/** Measured difference for this run only. Shown only when both calls succeeded. */
+function LatencyDelta({ decisions, openai }: { decisions: ProviderResult; openai: ProviderResult }) {
+  if (
+    decisions.status !== "success" ||
+    openai.status !== "success" ||
+    decisions.latencyMs === null ||
+    openai.latencyMs === null
+  ) {
+    return null;
+  }
+  const diff = Math.round(openai.latencyMs - decisions.latencyMs);
+  if (Math.abs(diff) < SIMILAR_LATENCY_MS) {
+    return <p className="mt-1 font-medium text-zinc-700">About the same (Δ {Math.abs(diff)} ms)</p>;
+  }
+  const faster = diff > 0 ? "Decisions" : "Baseline";
+  const slow = Math.max(decisions.latencyMs, openai.latencyMs);
+  const fast = Math.min(decisions.latencyMs, openai.latencyMs);
+  const ratio = fast > 0 ? ` (${(slow / fast).toFixed(1)}×)` : "";
+  return (
+    <p className="mt-1 font-medium text-zinc-700">
+      {faster} faster by {Math.abs(diff).toLocaleString()} ms{ratio}
+    </p>
+  );
+}
+
 function validity(r: ProviderResult) {
   if (r.status === "success") return <span className="text-emerald-700">Valid</span>;
   if (r.status === "invalid_output") return <span className="text-amber-700">Invalid</span>;
@@ -67,6 +95,7 @@ export function ComparisonSummary({ data }: { data: CompareResponse }) {
           <div className="text-sm tabular-nums">
             <p>Decisions: {formatLatency(results.decisions.latencyMs) ?? <Unavailable />}</p>
             <p>Baseline: {formatLatency(results.openai.latencyMs) ?? <Unavailable />}</p>
+            <LatencyDelta decisions={results.decisions} openai={results.openai} />
           </div>
         </Stat>
       </div>
