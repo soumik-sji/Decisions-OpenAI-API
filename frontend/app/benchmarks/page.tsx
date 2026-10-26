@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Card, PageHeader } from "@/components/ui";
 
-export const metadata: Metadata = { title: "Benchmarks · Jev vs. OpenAI Demo" };
+export const metadata: Metadata = { title: "Benchmarks · OpenAI Decisions vs. Baseline Demo" };
 
 // Optional page (ROADMAP §5, Page D). Built only after all three use cases work end to end.
 export default function BenchmarksPage() {

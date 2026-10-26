@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
 import { MailSenderForm } from "./MailSenderForm";
 
-export const metadata: Metadata = { title: "Mail Sender · Jev vs. OpenAI Demo" };
+export const metadata: Metadata = { title: "Mail Sender · OpenAI Decisions vs. Baseline Demo" };
 
 export default function MailSenderPage() {
   return (

@@ -34,11 +34,11 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
   id TEXT PRIMARY KEY,
   email_id TEXT NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
   use_case TEXT NOT NULL,
-  jev_run_id TEXT NOT NULL REFERENCES processing_runs(id),
+  decisions_run_id TEXT NOT NULL REFERENCES processing_runs(id),
   openai_run_id TEXT NOT NULL REFERENCES processing_runs(id),
   agreement INTEGER,
   expected_label TEXT,
-  jev_correct INTEGER,
+  decisions_correct INTEGER,
   openai_correct INTEGER,
   benchmark_id TEXT,
   created_at TEXT NOT NULL
@@ -46,11 +46,24 @@ CREATE TABLE IF NOT EXISTS evaluation_results (
 CREATE INDEX IF NOT EXISTS idx_eval_use_case ON evaluation_results(use_case, created_at);
 `;
 
+/**
+ * Databases created before the switch from Jev to OpenAI Decisions have jev_* columns.
+ * Rename them in place. Old runs keep provider = 'jev' so they are never shown or
+ * counted as OpenAI Decisions results.
+ */
+function migrateFromJev(db: Database): void {
+  const cols = db.query<{ name: string }, []>("PRAGMA table_info(evaluation_results)").all();
+  if (!cols.some((c) => c.name === "jev_run_id")) return;
+  db.run("ALTER TABLE evaluation_results RENAME COLUMN jev_run_id TO decisions_run_id");
+  db.run("ALTER TABLE evaluation_results RENAME COLUMN jev_correct TO decisions_correct");
+}
+
 export function openDatabase(path: string): Database {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new Database(path, { create: true, strict: true });
   db.run("PRAGMA journal_mode = WAL;");
   db.run("PRAGMA foreign_keys = ON;");
+  migrateFromJev(db);
   db.run(SCHEMA);
   return db;
 }

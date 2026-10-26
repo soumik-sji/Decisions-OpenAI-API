@@ -1,13 +1,13 @@
 # backend
 
-Bun API for the Jev vs. OpenAI demo. Runs both providers on the same simulated email, normalizes their results, and stores every run. No real email is ever sent.
+Bun API for the OpenAI Decisions vs. OpenAI baseline demo. Runs both providers on the same simulated email, normalizes their results, and stores every run. No real email is ever sent.
 
 ## Setup
 
 ```bash
 bun install
 cp .env.example .env        # fill in keys and model IDs
-bun run spike:jev           # lists your Jev models and makes one real call
+bun run spike:decisions     # makes one real OpenAI Decisions call
 bun run seed                # 8 fictional, labelled demo emails (idempotent)
 bun run dev                 # http://localhost:4000
 bun test                    # unit + API tests (provider test doubles, no network)
@@ -30,13 +30,13 @@ Errors always look like `{ "error": { "code", "message", "details"? } }`.
 
 ### Compare response
 
-`{ emailId, useCase, evaluationId, input, results: { jev, openai }, comparison }`. Each provider result has `status`, `decision`, `probabilities`, `confidence`, `latencyMs`, `model`, `usage`, `error`, and `errorKind` (`config | timeout | network | http | invalid_output`). A `null` value means the provider didn't supply it. It is never a guess.
+`{ emailId, useCase, evaluationId, input, results: { decisions, openai }, comparison }`. Each provider result has `status`, `decision`, `probabilities`, `confidence`, `latencyMs`, `model`, `usage`, `error`, and `errorKind` (`config | timeout | network | http | invalid_output`). A `null` value means the provider didn't supply it. It is never a guess.
 
-| useCase | Jev request | OpenAI request | `decision` |
+| useCase | Decisions request (`POST /v1/decisions`) | Baseline request (Chat Completions) | `decision` |
 |---|---|---|---|
 | `email_detection` | one `choice` question | strict JSON schema, enum | `{ label }` |
 | `model_routing` | one `choice` question | strict JSON schema, enum + reason | `{ tier, tierId, model, reason }` (`model` is the configured `OPENAI_*_MODEL` for that tier) |
-| `response_quality` | one `noul` per criterion (pass when P ≥ 0.5) | one boolean per criterion | `{ outcome, criteria[], failedCriteria, reason }` |
+| `response_quality` | one `predicate` per criterion (pass when P ≥ 0.5) | one boolean per criterion | `{ outcome, criteria[], failedCriteria, reason }` |
 
 Both sides get the same instructions, options, and criteria from `usecases/definitions.ts`. The quality gate's final outcome comes from one shared policy: everything passes → Accept, a critical criterion fails → Human review, otherwise → Retry / improve. The candidate reply comes from the request, then the stored email, and is otherwise generated once with `OPENAI_BALANCED_MODEL`. Both providers judge the same text.
 
@@ -49,9 +49,9 @@ index.ts              Bun.serve entry
 app.ts                routes, CORS (FRONTEND_ORIGIN only), error envelope
 config.ts             env loading
 db/                   bun:sqlite schema + queries
-providers/            jev.ts, openai.ts (all provider-specific formats), http.ts (timeouts, redaction)
+providers/            decisions.ts, openai.ts (all provider-specific formats), http.ts (timeouts, redaction)
 usecases/definitions.ts  shared categories, tiers, criteria, policy
 services/             compare.ts (orchestration + persistence), benchmarks.ts (metrics)
 data/seed-emails.ts   curated labelled emails
-scripts/              seed, Jev spike
+scripts/              seed, Decisions spike
 ```

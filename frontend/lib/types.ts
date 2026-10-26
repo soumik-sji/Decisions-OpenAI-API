@@ -1,5 +1,5 @@
 // Shapes returned by our own backend (see AGENTS.md "Backend API contract").
-// These are the normalized internal contract, not native Jev or OpenAI formats.
+// These are the normalized internal contract, not native OpenAI Decisions or Chat Completions formats.
 
 export const USE_CASES = [
   "email_detection",
@@ -9,7 +9,7 @@ export const USE_CASES = [
 
 export type UseCase = (typeof USE_CASES)[number];
 
-export type Provider = "jev" | "openai";
+export type Provider = "decisions" | "openai";
 
 export type Email = {
   id: string;
@@ -58,7 +58,7 @@ export type Comparison = {
   agreement: boolean | null;
   // Expected result for this email and use case, if one was supplied.
   expected: string | null;
-  jevMatchesExpected: boolean | null;
+  decisionsMatchesExpected: boolean | null;
   openaiMatchesExpected: boolean | null;
 };
 

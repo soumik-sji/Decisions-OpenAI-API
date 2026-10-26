@@ -119,7 +119,7 @@ export function ComparisonView({ emailId }: { emailId: string }) {
           <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-800">
             ← Inbox
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">Jev vs. OpenAI</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Decisions vs. Baseline</h1>
         </div>
         <span className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-600">
           Same input for both systems
@@ -191,10 +191,10 @@ export function ComparisonView({ emailId }: { emailId: string }) {
       {/* 3–4. Both panels, always visible together */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ProviderPanel
-          provider="jev"
+          provider="decisions"
           useCase={useCase}
           state={current}
-          result={result?.results.jev ?? null}
+          result={result?.results.decisions ?? null}
         />
         <ProviderPanel
           provider="openai"
@@ -230,7 +230,7 @@ export function ComparisonView({ emailId }: { emailId: string }) {
               {caseHistory.slice(0, 10).map((r) => (
                 <tr key={r.id} className="border-t border-zinc-100">
                   <td className="py-1.5 text-zinc-600">{formatDate(r.createdAt)}</td>
-                  <td className="py-1.5">{r.provider === "jev" ? "Jev" : "OpenAI"}</td>
+                  <td className="py-1.5">{r.provider === "decisions" ? "OpenAI Decisions" : r.provider === "openai" ? "OpenAI baseline" : r.provider}</td>
                   <td className="py-1.5">{r.status.replace("_", " ")}</td>
                   <td className="py-1.5">{r.decision ?? r.error ?? "—"}</td>
                   <td className="py-1.5 text-right tabular-nums">

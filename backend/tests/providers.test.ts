@@ -1,22 +1,25 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { requestJson, sanitizeError } from "../providers/http";
-import { parseChoice, parseQuality as parseJevQuality } from "../providers/jev";
+import { parseChoice, parseQuality as parseDecisionsQuality } from "../providers/decisions";
 import { parseQuality as parseOpenAIQuality, parseStructured } from "../providers/openai";
 import { ProviderError } from "../providers/types";
 import { EMAIL_CATEGORIES, qualityPolicy } from "../usecases/definitions";
 import { z } from "zod";
 
-const jevChoice = (choice: string) => ({
-  model: "jev-test",
-  answers: {
-    category: {
+const decisionsChoice = (choice: string) => ({
+  answers: [
+    {
       type: "choice",
+      name: "category",
       choice,
       confidence: 0.8,
-      probabilities: { "Billing question": 0.8, "Support request": 0.2 },
+      probabilities: [
+        { value: "billing_question", probability: 0.8 },
+        { value: "support_request", probability: 0.2 },
+      ],
     },
-  },
-  usage: { input_tokens: 100, output_tokens: 5 },
+  ],
+  usage: { input_tokens: 100, input_tokens_details: { cached_tokens: 0 } },
 });
 
 function expectProviderError(fn: () => unknown, kind: string) {
@@ -30,44 +33,55 @@ function expectProviderError(fn: () => unknown, kind: string) {
   throw new Error("expected a ProviderError");
 }
 
-describe("Jev normalization", () => {
+describe("OpenAI Decisions normalization", () => {
   test("maps a choice answer to the shared category", () => {
-    const r = parseChoice(jevChoice("Billing question"), "category", EMAIL_CATEGORIES);
-    expect(r.option.id).toBe("billing_question");
+    const r = parseChoice(decisionsChoice("billing_question"), "category", EMAIL_CATEGORIES, "gpt-6-luna");
+    expect(r.option.label).toBe("Billing question");
     expect(r.confidence).toBe(0.8);
-    expect(r.probabilities["Billing question"]).toBe(0.8);
+    expect(r.probabilities).toEqual({ "Billing question": 0.8, "Support request": 0.2 });
+    // No model echo in the response: falls back to the requested model.
+    expect(r.model).toBe("gpt-6-luna");
   });
 
   test("rejects a choice outside the allowed set", () => {
-    expectProviderError(() => parseChoice(jevChoice("Marketing"), "category", EMAIL_CATEGORIES), "invalid_output");
+    expectProviderError(
+      () => parseChoice(decisionsChoice("marketing"), "category", EMAIL_CATEGORIES, "m"),
+      "invalid_output",
+    );
   });
 
   test("rejects a response missing the expected answer", () => {
-    const res = { ...jevChoice("Other"), answers: { wrong: { type: "noul", noul: 0.4 } } };
-    expectProviderError(() => parseChoice(res, "category", EMAIL_CATEGORIES), "invalid_output");
+    const res = { ...decisionsChoice("other"), answers: [{ type: "predicate", name: "wrong", probability: 0.4 }] };
+    expectProviderError(() => parseChoice(res, "category", EMAIL_CATEGORIES, "m"), "invalid_output");
+  });
+
+  test("reports a refusal as invalid output instead of guessing", () => {
+    const res = { answers: [{ type: "refusal", name: "category" }] };
+    expectProviderError(() => parseChoice(res, "category", EMAIL_CATEGORIES, "m"), "invalid_output");
   });
 
   test("rejects a malformed response", () => {
-    expectProviderError(() => parseChoice({ answers: "nope" }, "category", EMAIL_CATEGORIES), "invalid_output");
+    expectProviderError(() => parseChoice({ answers: "nope" }, "category", EMAIL_CATEGORIES, "m"), "invalid_output");
   });
 
   test("quality gate applies the 0.5 threshold and shared policy", () => {
     const res = {
-      model: "jev-test",
-      answers: {
-        addresses_request: { type: "noul", noul: 0.9 },
-        accurate_and_grounded: { type: "noul", noul: 0.2 },
-        professional_tone: { type: "noul", noul: 0.95 },
-        safe_to_send: { type: "noul", noul: 0.7 },
-      },
-      usage: { input_tokens: 200, output_tokens: 8 },
+      answers: [
+        { type: "predicate", name: "addresses_request", probability: 0.9 },
+        { type: "predicate", name: "accurate_and_grounded", probability: 0.2 },
+        { type: "predicate", name: "professional_tone", probability: 0.95 },
+        { type: "predicate", name: "safe_to_send", probability: 0.7 },
+      ],
+      usage: { input_tokens: 200 },
     };
-    const out = parseJevQuality(res);
+    const out = parseDecisionsQuality(res, "gpt-6-luna");
     expect(out.decision.outcome).toBe("Human review");
     expect(out.decision.failedCriteria).toEqual(["Grounded in the email"]);
     expect(out.decision.criteria.find((c) => c.id === "accurate_and_grounded")?.probability).toBe(0.2);
     expect(out.confidence).toBeNull();
     expect(out.decision.reason).toBeNull();
+    // Output tokens are not reported by Decisions: unavailable, not 0.
+    expect(out.usage).toEqual({ inputTokens: 200, outputTokens: null });
   });
 });
 

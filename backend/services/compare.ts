@@ -20,12 +20,12 @@ import type {
 import type { EmailInput, UseCase } from "../usecases/definitions";
 
 export const LATENCY_METHOD =
-  "Wall-clock time measured on the backend around each provider HTTP request (includes network round trip). Jev and OpenAI run concurrently.";
+  "Wall-clock time measured on the backend around each provider HTTP request (includes network round trip). OpenAI Decisions and the baseline run concurrently.";
 
 export type Deps = {
   db: Database;
   config: Config;
-  jev: DecisionProvider;
+  decisions: DecisionProvider;
   openai: DecisionProvider & ReplyGenerator;
 };
 
@@ -78,9 +78,9 @@ export function decisionKey(useCase: UseCase, decision: Decision): string {
   }
 }
 
-export function computeAgreement(useCase: UseCase, jev: ProviderResult, openai: ProviderResult): boolean | null {
-  if (jev.status !== "completed" || openai.status !== "completed" || !jev.decision || !openai.decision) return null;
-  return decisionKey(useCase, jev.decision) === decisionKey(useCase, openai.decision);
+export function computeAgreement(useCase: UseCase, a: ProviderResult, b: ProviderResult): boolean | null {
+  if (a.status !== "completed" || b.status !== "completed" || !a.decision || !b.decision) return null;
+  return decisionKey(useCase, a.decision) === decisionKey(useCase, b.decision);
 }
 
 /** Accuracy needs ground truth: only Email Detector emails with an expected label qualify. */
@@ -162,12 +162,12 @@ export async function compare(
   const input = toInput(email);
   const snapshot: Record<string, unknown> = { useCase, email: input };
 
-  let jevCall: () => Promise<ProviderOutput<Decision>>;
+  let decisionsCall: () => Promise<ProviderOutput<Decision>>;
   let openaiCall: () => Promise<ProviderOutput<Decision>>;
 
   switch (useCase) {
     case "email_detection":
-      jevCall = () => deps.jev.classifyEmail(input);
+      decisionsCall = () => deps.decisions.classifyEmail(input);
       openaiCall = () => deps.openai.classifyEmail(input);
       break;
     case "model_routing": {
@@ -176,7 +176,7 @@ export async function compare(
         const model = deps.config.openai.tierModels[out.decision.tierId];
         return { ...out, decision: { ...out.decision, model } };
       };
-      jevCall = () => resolve(deps.jev);
+      decisionsCall = () => resolve(deps.decisions);
       openaiCall = () => resolve(deps.openai);
       break;
     }
@@ -184,25 +184,25 @@ export async function compare(
       const candidate = await resolveCandidateReply(deps, email, opts.candidateReply);
       snapshot.candidateReply = candidate.text;
       snapshot.candidateSource = candidate.source;
-      jevCall = () => deps.jev.evaluateReply(input, candidate.text);
+      decisionsCall = () => deps.decisions.evaluateReply(input, candidate.text);
       openaiCall = () => deps.openai.evaluateReply(input, candidate.text);
       break;
     }
   }
 
   // Independent, concurrent calls: neither provider sees the other's answer.
-  const [jevAttempt, openaiAttempt] = await Promise.all([attempt("jev", jevCall), attempt("openai", openaiCall)]);
+  const [decisionsAttempt, openaiAttempt] = await Promise.all([attempt("decisions", decisionsCall), attempt("openai", openaiCall)]);
 
-  const jev = toResult(crypto.randomUUID(), "jev", jevAttempt);
+  const decisions = toResult(crypto.randomUUID(), "decisions", decisionsAttempt);
   const openai = toResult(crypto.randomUUID(), "openai", openaiAttempt);
-  const agreement = computeAgreement(useCase, jev, openai);
-  const jevCorrect = computeCorrectness(useCase, email.expectedLabel, jev);
+  const agreement = computeAgreement(useCase, decisions, openai);
+  const decisionsCorrect = computeCorrectness(useCase, email.expectedLabel, decisions);
   const openaiCorrect = computeCorrectness(useCase, email.expectedLabel, openai);
   const evaluationId = crypto.randomUUID();
 
   deps.db.transaction(() => {
     for (const [result, a] of [
-      [jev, jevAttempt],
+      [decisions, decisionsAttempt],
       [openai, openaiAttempt],
     ] as const) {
       insertRun(deps.db, {
@@ -231,11 +231,11 @@ export async function compare(
       id: evaluationId,
       emailId,
       useCase,
-      jevRunId: jev.runId,
+      decisionsRunId: decisions.runId,
       openaiRunId: openai.runId,
       agreement,
       expectedLabel: useCase === "email_detection" ? email.expectedLabel : null,
-      jevCorrect,
+      decisionsCorrect,
       openaiCorrect,
       benchmarkId: opts.benchmarkId ?? null,
     });
@@ -246,12 +246,12 @@ export async function compare(
     useCase,
     evaluationId,
     input: snapshot,
-    results: { jev, openai },
+    results: { decisions, openai },
     comparison: {
       agreement,
       groundTruthCorrectness:
         useCase === "email_detection" && email.expectedLabel
-          ? { expected: email.expectedLabel, jev: jevCorrect, openai: openaiCorrect }
+          ? { expected: email.expectedLabel, decisions: decisionsCorrect, openai: openaiCorrect }
           : null,
       latencyMethod: LATENCY_METHOD,
     },

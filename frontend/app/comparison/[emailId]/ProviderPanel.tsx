@@ -3,8 +3,8 @@ import { Card, Spinner, Unavailable, formatLatency } from "@/components/ui";
 import type { RunState } from "./ComparisonView";
 
 const PROVIDER_META: Record<Provider, { name: string; subtitle: string; accent: string }> = {
-  jev: { name: "Jev", subtitle: "TypeSafe API", accent: "border-t-indigo-500" },
-  openai: { name: "OpenAI", subtitle: "Baseline", accent: "border-t-emerald-500" },
+  decisions: { name: "OpenAI Decisions", subtitle: "Decisions API", accent: "border-t-indigo-500" },
+  openai: { name: "OpenAI baseline", subtitle: "Chat Completions", accent: "border-t-emerald-500" },
 };
 
 const STATUS_STYLE: Record<ProviderStatus, { label: string; className: string }> = {
@@ -88,7 +88,7 @@ function PanelBody({
 
   return (
     <div>
-      <Row label="Decision" hint={provider === "jev" ? "Actual API output" : "Validated output"}>
+      <Row label="Decision" hint={provider === "decisions" ? "Actual API output" : "Validated output"}>
         {result.decision ? (
           <p className="text-2xl font-semibold tracking-tight">{result.decision}</p>
         ) : (
@@ -137,8 +137,8 @@ function PanelBody({
       )}
 
       <Row
-        label={provider === "jev" ? "Probabilities" : "Confidence"}
-        hint={provider === "jev" ? "If returned by the API" : "Only if supported"}
+        label={provider === "decisions" ? "Probabilities" : "Confidence"}
+        hint={provider === "decisions" ? "If returned by the API" : "Only if supported"}
       >
         {probs && probs.length > 0 ? (
           <ul className="flex flex-col gap-1.5">

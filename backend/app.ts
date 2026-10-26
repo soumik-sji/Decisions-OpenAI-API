@@ -68,7 +68,10 @@ export function createRoutes(deps: Deps) {
           status: "ok",
           providers: {
             // Reports whether configuration is present, never the values themselves.
-            jev: { configured: Boolean(deps.config.jev.apiKey && deps.config.jev.model), model: deps.config.jev.model },
+            decisions: {
+              configured: Boolean(deps.config.openai.apiKey && deps.config.decisions.model),
+              model: deps.config.decisions.model,
+            },
             openai: {
               configured: Boolean(deps.config.openai.apiKey && deps.config.openai.baselineModel),
               baselineModel: deps.config.openai.baselineModel,

@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Jev vs. OpenAI Demo",
+  title: "OpenAI Decisions vs. Baseline Demo",
   description:
-    "Compare Jev and an OpenAI baseline side by side on the same simulated email.",
+    "Compare OpenAI Decisions and an OpenAI baseline side by side on the same simulated email.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -29,7 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="flex min-h-full">
         <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-100 p-4">
           <div className="mb-6 px-3">
-            <p className="text-lg font-semibold tracking-tight">Jev vs. OpenAI</p>
+            <p className="text-lg font-semibold tracking-tight">Decisions vs. Baseline</p>
             <p className="text-xs text-zinc-500">AI mail intelligence demo</p>
           </div>
           <Suspense fallback={<NavList activePath={null} />}>

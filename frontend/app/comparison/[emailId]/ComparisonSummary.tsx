@@ -50,23 +50,23 @@ export function ComparisonSummary({ data }: { data: CompareResponse }) {
               <p className="mb-1 text-zinc-600">
                 Expected: <span className="font-medium text-zinc-900">{c.expected}</span>
               </p>
-              <p>Jev: {correctness(c.jevMatchesExpected)}</p>
-              <p>OpenAI: {correctness(c.openaiMatchesExpected)}</p>
+              <p>Decisions: {correctness(c.decisionsMatchesExpected)}</p>
+              <p>Baseline: {correctness(c.openaiMatchesExpected)}</p>
             </div>
           )}
         </Stat>
 
         <Stat label="Output validity">
           <div className="text-sm">
-            <p>Jev: {validity(results.jev)}</p>
-            <p>OpenAI: {validity(results.openai)}</p>
+            <p>Decisions: {validity(results.decisions)}</p>
+            <p>Baseline: {validity(results.openai)}</p>
           </div>
         </Stat>
 
         <Stat label="Latency (single run)">
           <div className="text-sm tabular-nums">
-            <p>Jev: {formatLatency(results.jev.latencyMs) ?? <Unavailable />}</p>
-            <p>OpenAI: {formatLatency(results.openai.latencyMs) ?? <Unavailable />}</p>
+            <p>Decisions: {formatLatency(results.decisions.latencyMs) ?? <Unavailable />}</p>
+            <p>Baseline: {formatLatency(results.openai.latencyMs) ?? <Unavailable />}</p>
           </div>
         </Stat>
       </div>

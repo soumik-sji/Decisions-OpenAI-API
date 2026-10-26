@@ -1,23 +1,25 @@
-# AGENTS.md — Jev vs. OpenAI Demo
+# AGENTS.md — OpenAI Decisions vs. OpenAI Baseline Demo
 
 Instructions for any coding agent working in this repo. Full product spec: `docs/ROADMAP.md` (source of truth for scope, phases, and success criteria). Read it before starting a new phase.
 
 ## What this is
 
-A small, presentation-ready web app that lets an audience create a **simulated** email, pick **one** of three AI workflow use cases, and compare **Jev** (TypeSafe API) with an **OpenAI baseline** side by side on the **same input**.
+A small, presentation-ready web app that lets an audience create a **simulated** email, pick **one** of three AI workflow use cases, and compare **OpenAI Decisions** (`POST /v1/decisions`) with an **OpenAI baseline** (Chat Completions + structured outputs) side by side on the **same input**.
 
 It is a learning artifact / proof of concept, not a production email system, a workflow platform, or a definitive benchmark. Timeline is 1 week.
 
-**Scope rule:** If a feature doesn't help the audience understand Jev or compare it with the OpenAI baseline, don't build it. Defer it.
+> **Provider change:** the demo originally compared Jev (TypeSafe API). Jev has been replaced by the OpenAI Decisions API, which has the same typed-question model (`choice` / `predicate` / `score` with probabilities). `docs/ROADMAP.md` still says "Jev"; read it as "OpenAI Decisions".
+
+**Scope rule:** If a feature doesn't help the audience understand OpenAI Decisions or compare it with the OpenAI baseline, don't build it. Defer it.
 
 ## Non-negotiable rules
 
 1. **No fabricated results.** Show only real provider outputs, errors, and measured latency. A failed live call must never be silently replaced with a mock or guessed output. Show the error and allow a rerun.
-2. **Same input, fair comparison.** Jev and OpenAI get equivalent inputs and comparable instructions. The OpenAI baseline never sees Jev's answer, and Jev never sees OpenAI's.
-3. **Secrets stay on the backend.** Never put API keys in `NEXT_PUBLIC_*` vars, browser code, logs, SQLite, or responses. The frontend never calls Jev or OpenAI directly.
+2. **Same input, fair comparison.** Decisions and the baseline get equivalent inputs and comparable instructions. Neither side ever sees the other's answer.
+3. **Secrets stay on the backend.** Never put API keys in `NEXT_PUBLIC_*` vars, browser code, logs, SQLite, or responses. The frontend never calls OpenAI directly.
 4. **No real email.** Mail Sender only creates a database record. No SMTP, Gmail, Outlook, or IMAP.
 5. **Honest metrics.** Agreement is not accuracy. Compute accuracy only against `expected_label`. Show cost only when real usage and pricing data exist. Show missing fields as "unavailable", never as `0` or an invented value. Never invent confidence scores for OpenAI.
-6. **Verify the Jev API before coding against it.** Don't assume model IDs, question types, or response fields. Check https://api.typesafe.ai/docs (and https://typesafe.ai/blog/introducing-system-one-models-and-jev) and do a minimal spike call first.
+6. **Verify the Decisions API before coding against it.** Don't assume model IDs, question types, or response fields. Check https://developers.openai.com/api/docs/guides/decisions and run `bun run spike:decisions` first. The guide does not document a `model` echo or output token counts, so those are optional and shown as unavailable when absent.
 7. **Mock data must be labelled.** Mock data is OK for early UI work only if it is visibly marked as mock, and it must be removed before the final demo.
 
 ## Actual stack (overrides the roadmap's suggestions)
@@ -57,7 +59,7 @@ jev/
     ├── index.ts         # Bun.serve routes
     ├── db/              # bun:sqlite setup + queries
     ├── providers/
-    │   ├── jev.ts       # Jev adapter: all Jev request/response specifics live here
+    │   ├── decisions.ts # OpenAI Decisions adapter: all Decisions request/response specifics live here
     │   └── openai.ts    # OpenAI adapter
     ├── usecases/        # email_detection, model_routing, response_quality
     ├── schemas/         # shared Zod schemas + normalized result shape
@@ -70,7 +72,7 @@ Keep provider-specific formats **inside their adapter**. Everything else works w
 
 - **`/mail-sender`**: form with from, subject, body, and an optional expected label/notes. Save the email, then link to its comparison page. Sends nothing.
 - **`/dashboard`**: inbox / demo-case list showing subject, preview, optional expected label, and an "Open in comparison" link.
-- **`/comparison/[emailId]`**: the main demo screen, in this order: selected email, use-case selector, **Jev panel and OpenAI panel side by side (both always visible)**, agreement/difference summary, latency and status for each side, a run/rerun button, and the expected result if one exists.
+- **`/comparison/[emailId]`**: the main demo screen, in this order: selected email, use-case selector, **Decisions panel and baseline panel side by side (both always visible)**, agreement/difference summary, latency and status for each side, a run/rerun button, and the expected result if one exists.
 - **`/benchmarks`** (optional, only after the core works): runs, accuracy (labelled cases only), agreement, latency (with the method labelled), and failures/invalid outputs.
 
 ## Use cases (one at a time, same layout)
@@ -96,7 +98,7 @@ POST /api/benchmarks/run          (optional)
 GET  /api/benchmarks/results      (optional)
 ```
 
-The compare endpoint runs both providers, normalizes the results, computes agreement, saves both runs, and returns `{ emailId, useCase, results: { jev, openai }, comparison }`. Each provider result includes `status`, `decision`, `latencyMs`, and `error`. This is our internal contract, not the native Jev or OpenAI format.
+The compare endpoint runs both providers, normalizes the results, computes agreement, saves both runs, and returns `{ emailId, useCase, results: { decisions, openai }, comparison }`. Each provider result includes `status`, `decision`, `latencyMs`, and `error`. This is our internal contract, not a native OpenAI format.
 
 Enable CORS for `FRONTEND_ORIGIN` only.
 
@@ -104,7 +106,7 @@ Enable CORS for `FRONTEND_ORIGIN` only.
 
 - `emails`: id, from_address, subject, body, expected_label (nullable), created_at
 - `processing_runs`: id, email_id, use_case, provider, status, input_snapshot, output_json, latency_ms, error_message (safe, no secrets), created_at
-- `evaluation_results` (optional): id, email_id, use_case, jev_run_id, openai_run_id, agreement, ground_truth_correctness, created_at
+- `evaluation_results` (optional): id, email_id, use_case, decisions_run_id, openai_run_id, agreement, ground_truth_correctness, created_at
 
 ## Environment
 
@@ -114,9 +116,9 @@ Enable CORS for `FRONTEND_ORIGIN` only.
 PORT=4000
 DATABASE_URL=./data/demo.sqlite
 FRONTEND_ORIGIN=http://localhost:3000
-TYPESAFE_API_KEY=
-JEV_MODEL=                 # confirm against the account's available models
-OPENAI_API_KEY=
+OPENAI_API_KEY=             # used by both Decisions and the baseline
+OPENAI_DECISIONS_MODEL=gpt-6-luna
+OPENAI_BASELINE_MODEL=
 OPENAI_FAST_MODEL=
 OPENAI_BALANCED_MODEL=
 OPENAI_CAPABLE_MODEL=
@@ -142,4 +144,4 @@ cd frontend && bun run lint && bun run build
 - Make small changes that match the surrounding code. Use strict TypeScript and avoid `any` at provider boundaries.
 - Test the important logic with `bun test`: payload validation, output normalization, agreement and accuracy math, and failure/timeout handling.
 - Use fictional addresses and content in sample data. Keep 5–10 curated labelled emails in a seed file.
-- If time runs short, cut in this order: charts/animation → benchmark page → persistent history → extra filters/fields → long explanations. **Never cut:** the real Jev call, the OpenAI baseline, the same-input comparison, the separate Mail Sender page, honest errors.
+- If time runs short, cut in this order: charts/animation → benchmark page → persistent history → extra filters/fields → long explanations. **Never cut:** the real Decisions call, the OpenAI baseline, the same-input comparison, the separate Mail Sender page, honest errors.

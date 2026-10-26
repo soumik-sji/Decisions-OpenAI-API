@@ -8,7 +8,7 @@ export type Config = {
   databasePath: string;
   frontendOrigin: string;
   providerTimeoutMs: number;
-  jev: { apiKey: string | null; model: string | null; baseUrl: string };
+  decisions: { model: string | null };
   openai: {
     apiKey: string | null;
     baseUrl: string;
@@ -29,10 +29,9 @@ export function loadConfig(): Config {
     databasePath: databaseUrl === ":memory:" ? databaseUrl : resolve(import.meta.dir, databaseUrl),
     frontendOrigin: optional("FRONTEND_ORIGIN") ?? "http://localhost:3000",
     providerTimeoutMs: Number(optional("PROVIDER_TIMEOUT_MS") ?? 30_000),
-    jev: {
-      apiKey: optional("TYPESAFE_API_KEY"),
-      model: optional("JEV_MODEL"),
-      baseUrl: optional("TYPESAFE_BASE_URL") ?? "https://api.typesafe.ai",
+    decisions: {
+      // OpenAI Decisions shares OPENAI_API_KEY and OPENAI_BASE_URL with the baseline.
+      model: optional("OPENAI_DECISIONS_MODEL") ?? "gpt-6-luna",
     },
     openai: {
       apiKey: optional("OPENAI_API_KEY"),

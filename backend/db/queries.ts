@@ -144,11 +144,11 @@ export type EvaluationInsert = {
   id: string;
   emailId: string;
   useCase: string;
-  jevRunId: string;
+  decisionsRunId: string;
   openaiRunId: string;
   agreement: boolean | null;
   expectedLabel: string | null;
-  jevCorrect: boolean | null;
+  decisionsCorrect: boolean | null;
   openaiCorrect: boolean | null;
   benchmarkId: string | null;
 };
@@ -157,17 +157,17 @@ const bool = (v: boolean | null) => (v === null ? null : v ? 1 : 0);
 
 export function insertEvaluation(db: Database, e: EvaluationInsert): void {
   db.query(
-    `INSERT INTO evaluation_results (id, email_id, use_case, jev_run_id, openai_run_id, agreement, expected_label, jev_correct, openai_correct, benchmark_id, created_at)
-     VALUES ($id, $emailId, $useCase, $jevRunId, $openaiRunId, $agreement, $expected, $jevCorrect, $openaiCorrect, $benchmarkId, $createdAt)`,
+    `INSERT INTO evaluation_results (id, email_id, use_case, decisions_run_id, openai_run_id, agreement, expected_label, decisions_correct, openai_correct, benchmark_id, created_at)
+     VALUES ($id, $emailId, $useCase, $decisionsRunId, $openaiRunId, $agreement, $expected, $decisionsCorrect, $openaiCorrect, $benchmarkId, $createdAt)`,
   ).run({
     id: e.id,
     emailId: e.emailId,
     useCase: e.useCase,
-    jevRunId: e.jevRunId,
+    decisionsRunId: e.decisionsRunId,
     openaiRunId: e.openaiRunId,
     agreement: bool(e.agreement),
     expected: e.expectedLabel,
-    jevCorrect: bool(e.jevCorrect),
+    decisionsCorrect: bool(e.decisionsCorrect),
     openaiCorrect: bool(e.openaiCorrect),
     benchmarkId: e.benchmarkId,
     createdAt: new Date().toISOString(),
@@ -180,11 +180,11 @@ export type EvaluationJoinedRow = {
   benchmark_id: string | null;
   agreement: number | null;
   expected_label: string | null;
-  jev_correct: number | null;
+  decisions_correct: number | null;
   openai_correct: number | null;
-  jev_status: string;
-  jev_latency_ms: number | null;
-  jev_error_kind: string | null;
+  decisions_status: string;
+  decisions_latency_ms: number | null;
+  decisions_error_kind: string | null;
   openai_status: string;
   openai_latency_ms: number | null;
   openai_error_kind: string | null;
@@ -197,12 +197,12 @@ export function listEvaluations(
 ): EvaluationJoinedRow[] {
   return db
     .query<EvaluationJoinedRow, Record<string, string | null>>(
-      `SELECT e.id, e.use_case, e.benchmark_id, e.agreement, e.expected_label, e.jev_correct, e.openai_correct,
-              j.status AS jev_status, j.latency_ms AS jev_latency_ms, j.error_kind AS jev_error_kind,
+      `SELECT e.id, e.use_case, e.benchmark_id, e.agreement, e.expected_label, e.decisions_correct, e.openai_correct,
+              j.status AS decisions_status, j.latency_ms AS decisions_latency_ms, j.error_kind AS decisions_error_kind,
               o.status AS openai_status, o.latency_ms AS openai_latency_ms, o.error_kind AS openai_error_kind,
               e.created_at
        FROM evaluation_results e
-       JOIN processing_runs j ON j.id = e.jev_run_id
+       JOIN processing_runs j ON j.id = e.decisions_run_id AND j.provider = 'decisions'
        JOIN processing_runs o ON o.id = e.openai_run_id
        WHERE ($useCase IS NULL OR e.use_case = $useCase)
          AND ($benchmarkId IS NULL OR e.benchmark_id = $benchmarkId)

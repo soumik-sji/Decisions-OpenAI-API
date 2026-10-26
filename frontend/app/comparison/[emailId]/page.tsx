@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { Card, Spinner } from "@/components/ui";
 import { ComparisonView } from "./ComparisonView";
 
-export const metadata: Metadata = { title: "Comparison · Jev vs. OpenAI Demo" };
+export const metadata: Metadata = { title: "Comparison · OpenAI Decisions vs. Baseline Demo" };
 
 export default function ComparisonPage({
   params,

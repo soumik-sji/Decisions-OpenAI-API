@@ -43,7 +43,7 @@ export function Inbox() {
   const filtered = useMemo(() => {
     if (state.kind !== "ready") return [];
     const q = query.trim().toLowerCase();
-    return state.emails.filter((e) => {
+    return state?.emails?.filter((e) => {
       if (label === UNLABELLED && e.expectedLabel) return false;
       if (label && label !== UNLABELLED && e.expectedLabel !== label) return false;
       if (!q) return true;

@@ -16,7 +16,7 @@ const config: Config = {
   databasePath: ":memory:",
   frontendOrigin: "http://localhost:3000",
   providerTimeoutMs: 1000,
-  jev: { apiKey: "test", model: "jev-test", baseUrl: "http://unused" },
+  decisions: { model: "decisions-test" },
   openai: {
     apiKey: "test",
     baseUrl: "http://unused",
@@ -64,10 +64,10 @@ let db: Database;
 let routes: ReturnType<typeof createRoutes>;
 let server: ReturnType<typeof Bun.serve>;
 
-function start(jev: DecisionProvider, openai: DecisionProvider & ReplyGenerator) {
+function start(decisions: DecisionProvider, openai: DecisionProvider & ReplyGenerator) {
   server?.stop(true);
   db = openDatabase(":memory:");
-  routes = createRoutes({ db, config, jev, openai });
+  routes = createRoutes({ db, config, decisions, openai });
   server = Bun.serve({ port: 0, routes });
 }
 
@@ -78,7 +78,7 @@ const post = (path: string, body: unknown) =>
 afterAll(() => server?.stop(true));
 
 describe("emails API", () => {
-  beforeEach(() => start(fakeProvider("jev", "Other"), fakeProvider("openai", "Other")));
+  beforeEach(() => start(fakeProvider("decisions", "Other"), fakeProvider("openai", "Other")));
 
   test("health reports configuration without secrets", async () => {
     const res = await api("/api/health");
@@ -126,57 +126,57 @@ describe("emails API", () => {
 
 describe("compare", () => {
   test("agreement and ground-truth correctness are computed separately", async () => {
-    start(fakeProvider("jev", "Billing question"), fakeProvider("openai", "Sales inquiry"));
+    start(fakeProvider("decisions", "Billing question"), fakeProvider("openai", "Sales inquiry"));
     const email = insertEmail(db, { from: "a", subject: "s", body: "b", expectedLabel: "Billing question" });
     const res = await post(`/api/emails/${email.id}/compare`, { useCase: "email_detection" });
     const body = (await res.json() as any) as ComparisonResponse;
     expect(res.status).toBe(200);
     expect(body.comparison.agreement).toBe(false);
-    expect(body.comparison.groundTruthCorrectness).toEqual({ expected: "Billing question", jev: true, openai: false });
-    expect(body.results.jev.status).toBe("completed");
-    expect(body.results.jev.latencyMs).toBeGreaterThanOrEqual(0);
+    expect(body.comparison.groundTruthCorrectness).toEqual({ expected: "Billing question", decisions: true, openai: false });
+    expect(body.results.decisions.status).toBe("completed");
+    expect(body.results.decisions.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
   test("a failed provider is reported as failed, never replaced", async () => {
     start(
-      fakeProvider("jev", "Other", { fail: new ProviderError("timeout", "Jev did not respond within 1000 ms") }),
+      fakeProvider("decisions", "Other", { fail: new ProviderError("timeout", "OpenAI Decisions did not respond within 1000 ms") }),
       fakeProvider("openai", "Other"),
     );
     const email = insertEmail(db, { from: "a", subject: "s", body: "b", expectedLabel: "Other" });
     const body = (await (await post(`/api/emails/${email.id}/compare`, { useCase: "email_detection" })).json() as any) as ComparisonResponse;
-    expect(body.results.jev.status).toBe("failed");
-    expect(body.results.jev.decision).toBeNull();
-    expect(body.results.jev.errorKind).toBe("timeout");
+    expect(body.results.decisions.status).toBe("failed");
+    expect(body.results.decisions.decision).toBeNull();
+    expect(body.results.decisions.errorKind).toBe("timeout");
     expect(body.results.openai.status).toBe("completed");
     expect(body.comparison.agreement).toBeNull();
-    expect(body.comparison.groundTruthCorrectness).toEqual({ expected: "Other", jev: null, openai: true });
+    expect(body.comparison.groundTruthCorrectness).toEqual({ expected: "Other", decisions: null, openai: true });
 
     const runs = (await (await api(`/api/emails/${email.id}/runs`)).json() as any).runs;
     expect(runs).toHaveLength(2);
-    expect(runs.find((r: { provider: string }) => r.provider === "jev").error).toContain("did not respond");
+    expect(runs.find((r: { provider: string }) => r.provider === "decisions").error).toContain("did not respond");
   });
 
   test("config errors report no latency", async () => {
     start(
-      fakeProvider("jev", "Other", { fail: new ProviderError("config", "JEV_MODEL is not set on the backend") }),
+      fakeProvider("decisions", "Other", { fail: new ProviderError("config", "OPENAI_DECISIONS_MODEL is not set on the backend") }),
       fakeProvider("openai", "Other"),
     );
     const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
     const body = (await (await post(`/api/emails/${email.id}/compare`, { useCase: "email_detection" })).json() as any) as ComparisonResponse;
-    expect(body.results.jev.latencyMs).toBeNull();
+    expect(body.results.decisions.latencyMs).toBeNull();
     expect(body.comparison.groundTruthCorrectness).toBeNull();
   });
 
   test("model routing resolves the tier to the configured model", async () => {
-    start(fakeProvider("jev", "Other"), fakeProvider("openai", "Other"));
+    start(fakeProvider("decisions", "Other"), fakeProvider("openai", "Other"));
     const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
     const body = (await (await post(`/api/emails/${email.id}/compare`, { useCase: "model_routing" })).json() as any) as ComparisonResponse;
-    expect(body.results.jev.decision).toMatchObject({ tierId: "fast", model: "fast-model" });
+    expect(body.results.decisions.decision).toMatchObject({ tierId: "fast", model: "fast-model" });
     expect(body.comparison.agreement).toBe(true);
   });
 
   test("quality gate uses one shared candidate reply for both providers", async () => {
-    start(fakeProvider("jev", "Other"), fakeProvider("openai", "Other"));
+    start(fakeProvider("decisions", "Other"), fakeProvider("openai", "Other"));
     const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
     const body = (await (await post(`/api/emails/${email.id}/compare`, { useCase: "response_quality" })).json() as any) as ComparisonResponse;
     expect(body.input.candidateReply).toBe("generated draft");
@@ -189,7 +189,7 @@ describe("compare", () => {
   });
 
   test("unknown use case is rejected", async () => {
-    start(fakeProvider("jev", "Other"), fakeProvider("openai", "Other"));
+    start(fakeProvider("decisions", "Other"), fakeProvider("openai", "Other"));
     const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
     expect((await post(`/api/emails/${email.id}/compare`, { useCase: "nope" })).status).toBe(400);
     expect((await post(`/api/emails/missing/compare`, { useCase: "email_detection" })).status).toBe(404);
@@ -198,7 +198,7 @@ describe("compare", () => {
 
 describe("benchmarks", () => {
   test("accuracy uses labelled cases only; agreement is separate", async () => {
-    start(fakeProvider("jev", "Other"), fakeProvider("openai", "Sales inquiry"));
+    start(fakeProvider("decisions", "Other"), fakeProvider("openai", "Sales inquiry"));
     insertEmail(db, { from: "a", subject: "1", body: "b", expectedLabel: "Other" });
     insertEmail(db, { from: "a", subject: "2", body: "b", expectedLabel: "Sales inquiry" });
     insertEmail(db, { from: "a", subject: "3", body: "b" }); // unlabelled: skipped by default
@@ -207,7 +207,7 @@ describe("benchmarks", () => {
     const summary = await res.json() as any;
     expect(res.status).toBe(200);
     expect(summary.evaluations).toBe(4);
-    expect(summary.jev.accuracy).toEqual({ correct: 2, evaluated: 4, rate: 0.5 });
+    expect(summary.decisions.accuracy).toEqual({ correct: 2, evaluated: 4, rate: 0.5 });
     expect(summary.openai.accuracy).toEqual({ correct: 2, evaluated: 4, rate: 0.5 });
     expect(summary.agreement).toEqual({ agreed: 0, comparable: 4, rate: 0 });
     expect(summary.cost).toBeNull();
@@ -215,7 +215,7 @@ describe("benchmarks", () => {
     const all = await (await api("/api/benchmarks/results?useCase=model_routing")).json() as any;
     expect(all.results[0].evaluations).toBe(0);
     expect(all.results[0].agreement.rate).toBeNull();
-    expect(all.results[0].jev.accuracy).toBeNull();
+    expect(all.results[0].decisions.accuracy).toBeNull();
   });
 
   test("latency stats", () => {

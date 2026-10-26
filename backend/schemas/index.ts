@@ -36,7 +36,7 @@ export const benchmarkRunSchema = z.object({
 
 // ---- Normalized result shape (internal contract, not a native provider format) ----
 
-export type Provider = "jev" | "openai";
+export type Provider = "decisions" | "openai";
 
 export type EmailDetectionDecision = { label: (typeof EMAIL_CATEGORY_LABELS)[number] };
 
@@ -45,7 +45,7 @@ export type ModelRoutingDecision = {
   tierId: (typeof ROUTING_TIERS)[number]["id"];
   /** The configured model ID this tier routes to; null when not configured. */
   model: string | null;
-  /** Free-text reason. Jev returns typed values only, so this is null (unavailable) for Jev. */
+  /** Free-text reason. OpenAI Decisions returns typed values only, so this is null (unavailable) for it. */
   reason: string | null;
 };
 
@@ -54,7 +54,7 @@ export type CriterionResult = {
   label: string;
   critical: boolean;
   passed: boolean;
-  /** Jev's P(true). Null (unavailable) for OpenAI, which returns booleans only. */
+  /** OpenAI Decisions' P(true). Null (unavailable) for the baseline, which returns booleans only. */
   probability: number | null;
 };
 
@@ -69,7 +69,8 @@ export type Decision = EmailDetectionDecision | ModelRoutingDecision | ResponseQ
 
 export type ErrorKind = "config" | "timeout" | "network" | "http" | "invalid_output";
 
-export type Usage = { inputTokens: number; outputTokens: number };
+/** outputTokens is null when the provider does not report it (OpenAI Decisions). */
+export type Usage = { inputTokens: number; outputTokens: number | null };
 
 export type ProviderResult = {
   runId: string;
@@ -91,7 +92,7 @@ export type Comparison = {
   /** Null when either side failed: agreement cannot be computed. */
   agreement: boolean | null;
   /** Only for email_detection with an expected label. Null otherwise. */
-  groundTruthCorrectness: { expected: string; jev: boolean | null; openai: boolean | null } | null;
+  groundTruthCorrectness: { expected: string; decisions: boolean | null; openai: boolean | null } | null;
   latencyMethod: string;
 };
 
@@ -100,6 +101,6 @@ export type ComparisonResponse = {
   useCase: z.infer<typeof useCaseSchema>;
   evaluationId: string;
   input: Record<string, unknown>;
-  results: { jev: ProviderResult; openai: ProviderResult };
+  results: { decisions: ProviderResult; openai: ProviderResult };
   comparison: Comparison;
 };
