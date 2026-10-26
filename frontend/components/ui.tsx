@@ -95,6 +95,12 @@ export function formatDate(iso: string): string {
     : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+/** Per-call costs are fractions of a cent, so show enough digits to be meaningful. */
+export function formatCost(usd: number | null): string | null {
+  if (usd === null) return null;
+  return `$${usd.toFixed(usd < 0.01 ? 6 : 4)}`;
+}
+
 export function formatLatency(ms: number | null): string | null {
   return ms === null ? null : `${Math.round(ms).toLocaleString()} ms`;
 }

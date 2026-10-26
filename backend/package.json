@@ -18,6 +18,9 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@langfuse/otel": "^6.0.2",
+    "@langfuse/tracing": "^6.0.2",
+    "@opentelemetry/sdk-node": "^0.300.0",
     "zod": "^4.6.7"
   }
 }

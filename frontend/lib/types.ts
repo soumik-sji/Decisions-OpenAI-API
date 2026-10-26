@@ -49,6 +49,10 @@ export type ProviderResult = {
   // Model that produced this result, if known.
   model: string | null;
   latencyMs: number | null;
+  // Tokens reported by the provider. outputTokens is null when not reported.
+  usage: { inputTokens: number; outputTokens: number | null } | null;
+  // USD from real usage x configured pricing. Null when either is missing.
+  costUsd: number | null;
   // Safe, user-facing error message. Never contains secrets.
   error: string | null;
 };

@@ -1,5 +1,5 @@
 import type { CompareResponse, ProviderResult } from "@/lib/types";
-import { Card, Unavailable, formatLatency } from "@/components/ui";
+import { Card, Unavailable, formatCost, formatLatency } from "@/components/ui";
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -47,6 +47,22 @@ function LatencyDelta({ decisions, openai }: { decisions: ProviderResult; openai
   );
 }
 
+/** Shown only when both sides have a real cost. */
+function CostDelta({ decisions, openai }: { decisions: number | null; openai: number | null }) {
+  if (decisions === null || openai === null) return null;
+  if (decisions === openai) return <p className="mt-1 font-medium text-zinc-700">Same cost</p>;
+  const cheaper = decisions < openai ? "Decisions" : "Baseline";
+  const low = Math.min(decisions, openai);
+  const high = Math.max(decisions, openai);
+  const ratio = low > 0 ? ` (${(high / low).toFixed(1)}×)` : "";
+  return (
+    <p className="mt-1 font-medium text-zinc-700">
+      {cheaper} cheaper by {formatCost(high - low)}
+      {ratio}
+    </p>
+  );
+}
+
 function validity(r: ProviderResult) {
   if (r.status === "success") return <span className="text-emerald-700">Valid</span>;
   if (r.status === "invalid_output") return <span className="text-amber-700">Invalid</span>;
@@ -59,7 +75,7 @@ export function ComparisonSummary({ data }: { data: CompareResponse }) {
   return (
     <Card>
       <p className="text-sm font-semibold">Comparison summary</p>
-      <div className="mt-4 grid grid-cols-2 gap-6 md:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-6 md:grid-cols-3 lg:grid-cols-5">
         <Stat label="Agreement">
           {c.agreement === null ? (
             <Unavailable>Unavailable (a side has no valid decision)</Unavailable>
@@ -96,6 +112,14 @@ export function ComparisonSummary({ data }: { data: CompareResponse }) {
             <p>Decisions: {formatLatency(results.decisions.latencyMs) ?? <Unavailable />}</p>
             <p>Baseline: {formatLatency(results.openai.latencyMs) ?? <Unavailable />}</p>
             <LatencyDelta decisions={results.decisions} openai={results.openai} />
+          </div>
+        </Stat>
+
+        <Stat label="Cost (single run)">
+          <div className="text-sm tabular-nums">
+            <p>Decisions: {formatCost(results.decisions.costUsd) ?? <Unavailable />}</p>
+            <p>Baseline: {formatCost(results.openai.costUsd) ?? <Unavailable />}</p>
+            <CostDelta decisions={results.decisions.costUsd} openai={results.openai.costUsd} />
           </div>
         </Stat>
       </div>

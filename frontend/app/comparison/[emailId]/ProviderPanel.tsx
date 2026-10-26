@@ -1,5 +1,5 @@
 import type { Provider, ProviderResult, ProviderStatus, UseCase } from "@/lib/types";
-import { Card, Spinner, Unavailable, formatLatency } from "@/components/ui";
+import { Card, Spinner, Unavailable, formatCost, formatLatency } from "@/components/ui";
 import type { RunState } from "./ComparisonView";
 
 const PROVIDER_META: Record<Provider, { name: string; subtitle: string; accent: string }> = {
@@ -167,6 +167,25 @@ function PanelBody({
           <p className="text-sm tabular-nums">{formatLatency(result.latencyMs)}</p>
         ) : (
           <Unavailable />
+        )}
+      </Row>
+
+      <Row label="Tokens" hint="Reported by the API">
+        {result.usage ? (
+          <p className="text-sm tabular-nums">
+            {result.usage.inputTokens.toLocaleString()} in ·{" "}
+            {result.usage.outputTokens === null ? "output unavailable" : `${result.usage.outputTokens.toLocaleString()} out`}
+          </p>
+        ) : (
+          <Unavailable />
+        )}
+      </Row>
+
+      <Row label="Cost" hint="Tokens × configured price">
+        {formatCost(result.costUsd) ? (
+          <p className="text-sm tabular-nums">{formatCost(result.costUsd)}</p>
+        ) : (
+          <Unavailable>Unavailable. Pricing not configured or usage not returned.</Unavailable>
         )}
       </Row>
     </div>

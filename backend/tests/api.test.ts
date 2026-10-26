@@ -6,7 +6,7 @@ import { openDatabase } from "../db";
 import { insertEmail } from "../db/queries";
 import { ProviderError, type DecisionProvider, type ReplyGenerator } from "../providers/types";
 import { latencyStats } from "../services/benchmarks";
-import type { ComparisonResponse } from "../schemas";
+import { computeCostUsd, type ComparisonResponse } from "../schemas";
 
 // Test doubles for the provider adapters. These exist only in tests and are never
 // reachable from the running app.
@@ -16,6 +16,7 @@ const config: Config = {
   databasePath: ":memory:",
   frontendOrigin: "http://localhost:3000",
   providerTimeoutMs: 1000,
+  pricing: { decisions: null, openai: null },
   decisions: { model: "decisions-test" },
   openai: {
     apiKey: "test",
@@ -193,6 +194,33 @@ describe("compare", () => {
     const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
     expect((await post(`/api/emails/${email.id}/compare`, { useCase: "nope" })).status).toBe(400);
     expect((await post(`/api/emails/missing/compare`, { useCase: "email_detection" })).status).toBe(404);
+  });
+});
+
+describe("cost", () => {
+  const price = { inputPer1M: 2, outputPer1M: 8 };
+
+  test("computed from real usage and configured pricing", () => {
+    expect(computeCostUsd({ inputTokens: 1_000, outputTokens: 500 }, price)).toBeCloseTo(0.006);
+  });
+
+  test("unavailable without usage or pricing, never zero", () => {
+    expect(computeCostUsd(null, price)).toBeNull();
+    expect(computeCostUsd({ inputTokens: 1_000, outputTokens: 10 }, null)).toBeNull();
+  });
+
+  test("unavailable when output tokens are unreported but output is priced", () => {
+    expect(computeCostUsd({ inputTokens: 1_000, outputTokens: null }, price)).toBeNull();
+    expect(computeCostUsd({ inputTokens: 1_000, outputTokens: null }, { inputPer1M: 2, outputPer1M: 0 })).toBeCloseTo(0.002);
+  });
+
+  test("compare returns null cost when pricing is not configured", async () => {
+    start(fakeProvider("decisions", "Other"), fakeProvider("openai", "Other"));
+    const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
+    const res = await post(`/api/emails/${email.id}/compare`, { useCase: "email_detection" });
+    const body = (await res.json()) as ComparisonResponse;
+    expect(body.results.decisions.costUsd).toBeNull();
+    expect(body.results.openai.costUsd).toBeNull();
   });
 });
 

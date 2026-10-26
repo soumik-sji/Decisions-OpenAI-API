@@ -1,6 +1,8 @@
 import type { Database } from "bun:sqlite";
-import type { Config } from "../config";
+import { propagateAttributes, startActiveObservation } from "@langfuse/tracing";
+import type { Config, Pricing } from "../config";
 import { getEmail, insertEvaluation, insertRun, type Email } from "../db/queries";
+import { flushTracing } from "../lib/tracing";
 import { sanitizeError } from "../providers/http";
 import {
   ProviderError,
@@ -17,6 +19,7 @@ import type {
   ProviderResult,
   ResponseQualityDecision,
 } from "../schemas";
+import { computeCostUsd } from "../schemas";
 import type { EmailInput, UseCase } from "../usecases/definitions";
 
 export const LATENCY_METHOD =
@@ -90,7 +93,7 @@ export function computeCorrectness(useCase: UseCase, expectedLabel: string | nul
   return decisionKey(useCase, result.decision) === expectedLabel;
 }
 
-function toResult(runId: string, provider: Provider, a: Attempt): ProviderResult {
+function toResult(runId: string, provider: Provider, a: Attempt, price: Pricing | null): ProviderResult {
   if (a.ok) {
     return {
       runId,
@@ -102,6 +105,7 @@ function toResult(runId: string, provider: Provider, a: Attempt): ProviderResult
       latencyMs: a.latencyMs,
       model: a.output.model,
       usage: a.output.usage,
+      costUsd: computeCostUsd(a.output.usage, price),
       error: null,
       errorKind: null,
     };
@@ -116,6 +120,7 @@ function toResult(runId: string, provider: Provider, a: Attempt): ProviderResult
     latencyMs: a.latencyMs,
     model: null,
     usage: null,
+    costUsd: null,
     error: a.error.message,
     errorKind: a.error.kind,
   };
@@ -156,6 +161,10 @@ export async function compare(
   useCase: UseCase,
   opts: { candidateReply?: string; benchmarkId?: string } = {},
 ): Promise<ComparisonResponse> {
+  try {
+  return await startActiveObservation(`compare-${useCase}`, async (agent) => {
+  agent.update({ input: { emailId, useCase } });
+
   const email = getEmail(deps.db, emailId);
   if (!email) throw new AppError(404, "not_found", `Email ${emailId} not found`);
 
@@ -191,10 +200,29 @@ export async function compare(
   }
 
   // Independent, concurrent calls: neither provider sees the other's answer.
-  const [decisionsAttempt, openaiAttempt] = await Promise.all([attempt("decisions", decisionsCall), attempt("openai", openaiCall)]);
+  const [decisionsAttempt, openaiAttempt] = await Promise.all([
+    startActiveObservation("decisions-provider", async (obs) => {
+      obs.update({ input: { useCase, emailId } });
+      const result = await attempt("decisions", decisionsCall);
+      obs.update({
+        output: result.ok ? { decision: result.output.decision } : { error: result.error.message },
+        level: result.ok ? "DEFAULT" : "ERROR",
+      });
+      return result;
+    }, { asType: "generation" }),
+    startActiveObservation("openai-baseline", async (obs) => {
+      obs.update({ input: { useCase, emailId } });
+      const result = await attempt("openai", openaiCall);
+      obs.update({
+        output: result.ok ? { decision: result.output.decision } : { error: result.error.message },
+        level: result.ok ? "DEFAULT" : "ERROR",
+      });
+      return result;
+    }, { asType: "generation" }),
+  ]);
 
-  const decisions = toResult(crypto.randomUUID(), "decisions", decisionsAttempt);
-  const openai = toResult(crypto.randomUUID(), "openai", openaiAttempt);
+  const decisions = toResult(crypto.randomUUID(), "decisions", decisionsAttempt, deps.config.pricing.decisions);
+  const openai = toResult(crypto.randomUUID(), "openai", openaiAttempt, deps.config.pricing.openai);
   const agreement = computeAgreement(useCase, decisions, openai);
   const decisionsCorrect = computeCorrectness(useCase, email.expectedLabel, decisions);
   const openaiCorrect = computeCorrectness(useCase, email.expectedLabel, openai);
@@ -219,6 +247,7 @@ export async function compare(
               confidence: result.confidence,
               model: result.model,
               usage: result.usage,
+              costUsd: result.costUsd,
               raw: a.output.raw,
             }
           : null,
@@ -241,7 +270,7 @@ export async function compare(
     });
   })();
 
-  return {
+  const response: ComparisonResponse = {
     emailId,
     useCase,
     evaluationId,
@@ -256,4 +285,11 @@ export async function compare(
       latencyMethod: LATENCY_METHOD,
     },
   };
+
+  agent.update({ output: { agreement, decisionsStatus: decisions.status, openaiStatus: openai.status } });
+  return response;
+  }, { asType: "agent" });
+  } finally {
+    await flushTracing();
+  }
 }

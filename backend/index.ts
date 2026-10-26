@@ -1,8 +1,11 @@
 import { createRoutes } from "./app";
 import { loadConfig } from "./config";
 import { openDatabase } from "./db";
+import { initTracing, shutdownTracing } from "./lib/tracing";
 import { createDecisionsProvider } from "./providers/decisions";
 import { createOpenAIProvider } from "./providers/openai";
+
+initTracing();
 
 const config = loadConfig();
 const db = openDatabase(config.databasePath);
@@ -23,3 +26,12 @@ if (!config.openai.apiKey) console.warn("OpenAI Decisions is not configured: set
 if (!config.openai.apiKey || !config.openai.baselineModel) {
   console.warn("OpenAI is not configured: set OPENAI_API_KEY and OPENAI_BASELINE_MODEL");
 }
+
+process.on("SIGINT", async () => {
+  try { await shutdownTracing(); } catch {}
+  process.exit(0);
+});
+process.on("SIGTERM", async () => {
+  try { await shutdownTracing(); } catch {}
+  process.exit(0);
+});

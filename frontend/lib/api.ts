@@ -108,6 +108,8 @@ type BackendProviderResult = {
   probabilities: Record<string, number> | null;
   latencyMs: number | null;
   model: string | null;
+  usage: { inputTokens: number; outputTokens: number | null } | null;
+  costUsd: number | null;
   error: string | null;
   errorKind: BackendErrorKind | null;
 };
@@ -184,6 +186,8 @@ function toProviderResult(useCase: UseCase, r: BackendProviderResult): ProviderR
     routedModel: useCase === "model_routing" ? (r.decision?.model ?? null) : null,
     model: r.model,
     latencyMs: r.latencyMs,
+    usage: r.usage ?? null,
+    costUsd: r.costUsd ?? null,
     error: r.error,
   };
 }

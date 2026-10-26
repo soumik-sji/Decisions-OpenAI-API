@@ -72,6 +72,16 @@ export type ErrorKind = "config" | "timeout" | "network" | "http" | "invalid_out
 /** outputTokens is null when the provider does not report it (OpenAI Decisions). */
 export type Usage = { inputTokens: number; outputTokens: number | null };
 
+/** Never guesses: missing usage, missing pricing, or unreported output tokens give null. */
+export function computeCostUsd(
+  usage: Usage | null,
+  price: { inputPer1M: number; outputPer1M: number } | null,
+): number | null {
+  if (!usage || !price) return null;
+  if (usage.outputTokens === null && price.outputPer1M > 0) return null;
+  return (usage.inputTokens * price.inputPer1M + (usage.outputTokens ?? 0) * price.outputPer1M) / 1_000_000;
+}
+
 export type ProviderResult = {
   runId: string;
   provider: Provider;
@@ -84,6 +94,8 @@ export type ProviderResult = {
   latencyMs: number | null;
   model: string | null;
   usage: Usage | null;
+  /** USD for this call from real usage x configured pricing. Null when either is missing. */
+  costUsd: number | null;
   error: string | null;
   errorKind: ErrorKind | null;
 };
