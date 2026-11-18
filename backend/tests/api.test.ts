@@ -37,21 +37,26 @@ const fakeOutput = <D>(decision: D, model: string) => ({
   raw: {},
 });
 
-function fakeProvider(name: string, label: string, opts: { fail?: ProviderError } = {}): DecisionProvider & ReplyGenerator {
-  const maybeFail = () => {
+function fakeProvider(
+  name: string,
+  label: string,
+  opts: { fail?: ProviderError; delayMs?: number } = {},
+): DecisionProvider & ReplyGenerator {
+  const maybeWaitAndFail = async () => {
+    if (opts.delayMs) await Bun.sleep(opts.delayMs);
     if (opts.fail) throw opts.fail;
   };
   return {
     async classifyEmail() {
-      maybeFail();
+      await maybeWaitAndFail();
       return fakeOutput({ label: label as "Other" }, name);
     },
     async routeEmail() {
-      maybeFail();
+      await maybeWaitAndFail();
       return fakeOutput({ tier: "Fast / low-cost" as const, tierId: "fast" as const, reason: null }, name);
     },
     async evaluateReply() {
-      maybeFail();
+      await maybeWaitAndFail();
       return fakeOutput(
         { outcome: "Accept" as const, criteria: [], failedCriteria: [], reason: null },
         name,
@@ -219,6 +224,57 @@ describe("compare", () => {
     const email = insertEmail(db, { from: "a", subject: "s", body: "b" });
     expect((await post(`/api/emails/${email.id}/compare`, { useCase: "nope" })).status).toBe(400);
     expect((await post(`/api/emails/missing/compare`, { useCase: "email_detection" })).status).toBe(404);
+  });
+
+  test("SSE stream flushes the faster provider before the slower provider finishes", async () => {
+    start(
+      fakeProvider("decisions", "Billing question", { delayMs: 15 }),
+      fakeProvider("openai", "Sales inquiry", { delayMs: 180 }),
+    );
+    const email = insertEmail(db, { from: "a", subject: "s", body: "b", expectedLabel: "Billing question" });
+
+    const startedAt = performance.now();
+    const res = await api(`/api/emails/${email.id}/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ useCase: "email_detection" }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/event-stream");
+    expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const events: Array<{ atMs: number; payload: any }> = [];
+
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      let sep = buffer.indexOf("\n\n");
+      while (sep !== -1) {
+        const chunk = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        sep = buffer.indexOf("\n\n");
+        const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
+        if (dataLine) {
+          events.push({ atMs: performance.now() - startedAt, payload: JSON.parse(dataLine.slice(5).trim()) });
+        }
+      }
+      if (done) break;
+    }
+
+    const decisionsEvt = events.find((e) => e.payload.type === "provider" && e.payload.provider === "decisions");
+    const openaiEvt = events.find((e) => e.payload.type === "provider" && e.payload.provider === "openai");
+    const completeEvt = events.find((e) => e.payload.type === "complete");
+
+    expect(decisionsEvt).toBeDefined();
+    expect(openaiEvt).toBeDefined();
+    expect(completeEvt).toBeDefined();
+    // Decisions (~15ms) must arrive well before OpenAI (~180ms) finishes!
+    expect(openaiEvt!.atMs - decisionsEvt!.atMs).toBeGreaterThan(80);
+    expect(completeEvt!.payload.data.comparison.agreement).toBe(false);
+    expect(completeEvt!.payload.data.results.decisions.decision).toEqual({ label: "Billing question" });
   });
 });
 

@@ -139,6 +139,29 @@ type BackendCompareResponse = {
   };
 };
 
+type BackendStreamEvent =
+  | { type: "preparing"; stage: "generating_reply" }
+  | { type: "started"; decisionEngine: DecisionEngine }
+  | {
+      type: "provider";
+      provider: Provider;
+      decisionEngine: DecisionEngine;
+      result: BackendProviderResult;
+    }
+  | { type: "complete"; data: BackendCompareResponse }
+  | { type: "error"; error: unknown };
+
+export type CompareStreamCallbacks = {
+  onPreparing?: (stage: "generating_reply") => void;
+  onStarted?: (decisionEngine: DecisionEngine) => void;
+  onProvider?: (
+    provider: Provider,
+    result: ProviderResult,
+    decisionEngine: DecisionEngine,
+  ) => void;
+  signal?: AbortSignal;
+};
+
 type BackendRun = {
   id: string;
   emailId: string;
@@ -275,6 +298,114 @@ export const api = {
         { method: "POST", body: JSON.stringify({ useCase }) },
       ),
     ),
+
+  compareStream: async (
+    id: string,
+    useCase: UseCase,
+    callbacks?: CompareStreamCallbacks,
+  ): Promise<CompareResponse> => {
+    let res: Response;
+    try {
+      res = await fetch(
+        `${API_BASE_URL}/api/emails/${encodeURIComponent(id)}/compare`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
+          body: JSON.stringify({ useCase }),
+          signal: callbacks?.signal,
+        },
+      );
+    } catch (err) {
+      if (callbacks?.signal?.aborted) throw err;
+      throw new ApiError(
+        `Can't reach the backend at ${API_BASE_URL}. Is it running?`,
+        null,
+      );
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new ApiError(
+            `Backend returned a non-JSON response (HTTP ${res.status}).`,
+            res.status,
+          );
+        }
+      }
+      const message =
+        data !== null && typeof data === "object" && "error" in data
+          ? backendErrorMessage(data.error)
+          : null;
+      throw new ApiError(
+        message ?? `Request failed (HTTP ${res.status}).`,
+        res.status,
+      );
+    }
+
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!res.body || !contentType.includes("text/event-stream")) {
+      const data = (await res.json()) as BackendCompareResponse;
+      return toCompareResponse(data);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResult: CompareResponse | null = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      buffer = buffer.replace(/\r\n/g, "\n");
+
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const rawEvent = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        boundary = buffer.indexOf("\n\n");
+
+        const dataLines = rawEvent
+          .split("\n")
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart());
+        if (dataLines.length === 0) continue;
+
+        const event = JSON.parse(dataLines.join("\n")) as BackendStreamEvent;
+        if (event.type === "preparing") {
+          callbacks?.onPreparing?.(event.stage);
+        } else if (event.type === "started") {
+          callbacks?.onStarted?.(event.decisionEngine);
+        } else if (event.type === "provider") {
+          callbacks?.onProvider?.(
+            event.provider,
+            toProviderResult(useCase, event.result),
+            event.decisionEngine,
+          );
+        } else if (event.type === "complete") {
+          finalResult = toCompareResponse(event.data);
+        } else if (event.type === "error") {
+          throw new ApiError(
+            backendErrorMessage(event.error) ?? "Comparison failed.",
+            null,
+          );
+        }
+      }
+
+      if (done) break;
+    }
+
+    if (!finalResult) {
+      throw new ApiError("Comparison stream ended before completion.", null);
+    }
+    return finalResult;
+  },
 
   listRuns: async (id: string) =>
     (

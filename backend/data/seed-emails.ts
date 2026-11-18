@@ -51,7 +51,7 @@ export const SEED_EMAILS: (CreateEmailInput & { id: string })[] = [
   },
   {
     id: "seed-06",
-    from: "priya@adventure-works-example.com",
+    from: "prisha@adventure-works-example.com",
     subject: "Upgrade + invoice question",
     body: "We'd like to upgrade from the Starter plan to the Business plan for our team. Before we do, can you tell me whether the upgrade is prorated on our next invoice or charged immediately?",
     expectedLabel: "Billing question",

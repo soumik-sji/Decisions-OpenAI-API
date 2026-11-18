@@ -37,7 +37,7 @@ export function createRoutes(deps: Deps) {
   const corsHeaders = {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
     Vary: "Origin",
   };
 
@@ -106,8 +106,75 @@ export function createRoutes(deps: Deps) {
     "/api/emails/:id/compare": {
       POST: wrap<"/api/emails/:id/compare">(async (req) => {
         const body = await readBody(req, compareRequestSchema);
-        const result = await compare(deps, req.params.id, body.useCase, { candidateReply: body.candidateReply });
-        return json(result);
+        const wantsStream = (req.headers.get("accept") ?? "").includes("text/event-stream");
+        if (!wantsStream) {
+          const result = await compare(deps, req.params.id, body.useCase, { candidateReply: body.candidateReply });
+          return json(result);
+        }
+
+        const email = getEmail(deps.db, req.params.id);
+        if (!email) throw new AppError(404, "not_found", `Email ${req.params.id} not found`);
+        if (
+          body.useCase === "response_quality" &&
+          !body.candidateReply &&
+          !email.candidateReply &&
+          !deps.config.openai.tierModels.balanced
+        ) {
+          throw new AppError(
+            400,
+            "candidate_reply_missing",
+            "This email has no candidate reply. Provide candidateReply, or set OPENAI_BALANCED_MODEL so one can be generated.",
+          );
+        }
+
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+          async start(controller) {
+            let closed = false;
+            const send = (payload: unknown) => {
+              if (closed) return;
+              try {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+              } catch {
+                closed = true;
+              }
+            };
+
+            try {
+              const result = await compare(deps, req.params.id, body.useCase, {
+                candidateReply: body.candidateReply,
+                onPreparing: ({ stage }) => send({ type: "preparing", stage }),
+                onStarted: ({ decisionEngine }) => send({ type: "started", decisionEngine }),
+                onProviderResult: ({ provider, decisionEngine, result: providerResult }) =>
+                  send({ type: "provider", provider, decisionEngine, result: providerResult }),
+              });
+              send({ type: "complete", data: result });
+            } catch (err) {
+              const payload =
+                err instanceof AppError
+                  ? { code: err.code, message: err.message }
+                  : { code: "internal_error", message: "Internal server error" };
+              send({ type: "error", error: payload });
+            } finally {
+              if (!closed) {
+                closed = true;
+                try {
+                  controller.close();
+                } catch {}
+              }
+            }
+          },
+        });
+
+        return new Response(stream, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+          },
+        });
       }),
       OPTIONS: preflight,
     },
