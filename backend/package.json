@@ -8,6 +8,7 @@
     "start": "bun ./index.ts",
     "seed": "bun ./scripts/seed.ts",
     "spike:decisions": "bun ./scripts/decisions-spike.ts",
+    "spike:jev": "bun ./scripts/jev-spike.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },

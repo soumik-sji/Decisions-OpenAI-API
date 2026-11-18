@@ -1,4 +1,5 @@
-import type { CompareResponse, ProviderResult } from "@/lib/types";
+import { DECISION_ENGINE_META } from "@/lib/api";
+import type { CompareResponse, DecisionEngine, ProviderResult } from "@/lib/types";
 import { Card, Unavailable, formatCost, formatLatency } from "@/components/ui";
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
@@ -23,7 +24,15 @@ function correctness(match: boolean | null) {
 const SIMILAR_LATENCY_MS = 100;
 
 /** Measured difference for this run only. Shown only when both calls succeeded. */
-function LatencyDelta({ decisions, openai }: { decisions: ProviderResult; openai: ProviderResult }) {
+function LatencyDelta({
+  engine,
+  decisions,
+  openai,
+}: {
+  engine: DecisionEngine;
+  decisions: ProviderResult;
+  openai: ProviderResult;
+}) {
   if (
     decisions.status !== "success" ||
     openai.status !== "success" ||
@@ -36,7 +45,7 @@ function LatencyDelta({ decisions, openai }: { decisions: ProviderResult; openai
   if (Math.abs(diff) < SIMILAR_LATENCY_MS) {
     return <p className="mt-1 font-medium text-zinc-700">About the same (Δ {Math.abs(diff)} ms)</p>;
   }
-  const faster = diff > 0 ? "Decisions" : "Baseline";
+  const faster = diff > 0 ? DECISION_ENGINE_META[engine].short : "Baseline";
   const slow = Math.max(decisions.latencyMs, openai.latencyMs);
   const fast = Math.min(decisions.latencyMs, openai.latencyMs);
   const ratio = fast > 0 ? ` (${(slow / fast).toFixed(1)}×)` : "";
@@ -48,10 +57,18 @@ function LatencyDelta({ decisions, openai }: { decisions: ProviderResult; openai
 }
 
 /** Shown only when both sides have a real cost. */
-function CostDelta({ decisions, openai }: { decisions: number | null; openai: number | null }) {
+function CostDelta({
+  engine,
+  decisions,
+  openai,
+}: {
+  engine: DecisionEngine;
+  decisions: number | null;
+  openai: number | null;
+}) {
   if (decisions === null || openai === null) return null;
   if (decisions === openai) return <p className="mt-1 font-medium text-zinc-700">Same cost</p>;
-  const cheaper = decisions < openai ? "Decisions" : "Baseline";
+  const cheaper = decisions < openai ? DECISION_ENGINE_META[engine].short : "Baseline";
   const low = Math.min(decisions, openai);
   const high = Math.max(decisions, openai);
   const ratio = low > 0 ? ` (${(high / low).toFixed(1)}×)` : "";
@@ -70,7 +87,8 @@ function validity(r: ProviderResult) {
 }
 
 export function ComparisonSummary({ data }: { data: CompareResponse }) {
-  const { comparison: c, results } = data;
+  const { comparison: c, results, decisionEngine: engine } = data;
+  const left = DECISION_ENGINE_META[engine].short;
 
   return (
     <Card>
@@ -94,7 +112,7 @@ export function ComparisonSummary({ data }: { data: CompareResponse }) {
               <p className="mb-1 text-zinc-600">
                 Expected: <span className="font-medium text-zinc-900">{c.expected}</span>
               </p>
-              <p>Decisions: {correctness(c.decisionsMatchesExpected)}</p>
+              <p>{left}: {correctness(c.decisionsMatchesExpected)}</p>
               <p>Baseline: {correctness(c.openaiMatchesExpected)}</p>
             </div>
           )}
@@ -102,24 +120,24 @@ export function ComparisonSummary({ data }: { data: CompareResponse }) {
 
         <Stat label="Output validity">
           <div className="text-sm">
-            <p>Decisions: {validity(results.decisions)}</p>
+            <p>{left}: {validity(results.decisions)}</p>
             <p>Baseline: {validity(results.openai)}</p>
           </div>
         </Stat>
 
         <Stat label="Latency (single run)">
           <div className="text-sm tabular-nums">
-            <p>Decisions: {formatLatency(results.decisions.latencyMs) ?? <Unavailable />}</p>
+            <p>{left}: {formatLatency(results.decisions.latencyMs) ?? <Unavailable />}</p>
             <p>Baseline: {formatLatency(results.openai.latencyMs) ?? <Unavailable />}</p>
-            <LatencyDelta decisions={results.decisions} openai={results.openai} />
+            <LatencyDelta engine={engine} decisions={results.decisions} openai={results.openai} />
           </div>
         </Stat>
 
         <Stat label="Cost (single run)">
           <div className="text-sm tabular-nums">
-            <p>Decisions: {formatCost(results.decisions.costUsd) ?? <Unavailable />}</p>
+            <p>{left}: {formatCost(results.decisions.costUsd) ?? <Unavailable />}</p>
             <p>Baseline: {formatCost(results.openai.costUsd) ?? <Unavailable />}</p>
-            <CostDelta decisions={results.decisions.costUsd} openai={results.openai.costUsd} />
+            <CostDelta engine={engine} decisions={results.decisions.costUsd} openai={results.openai.costUsd} />
           </div>
         </Stat>
       </div>

@@ -1,11 +1,15 @@
-import type { Provider, ProviderResult, ProviderStatus, UseCase } from "@/lib/types";
+import { DECISION_ENGINE_META } from "@/lib/api";
+import type { DecisionEngine, Provider, ProviderResult, ProviderStatus, UseCase } from "@/lib/types";
 import { Card, Spinner, Unavailable, formatCost, formatLatency } from "@/components/ui";
 import type { RunState } from "./ComparisonView";
 
-const PROVIDER_META: Record<Provider, { name: string; subtitle: string; accent: string }> = {
-  decisions: { name: "OpenAI Decisions", subtitle: "Decisions API", accent: "border-t-indigo-500" },
-  openai: { name: "OpenAI baseline", subtitle: "Chat Completions", accent: "border-t-emerald-500" },
-};
+function providerMeta(provider: Provider, engine: DecisionEngine) {
+  if (provider === "openai") {
+    return { name: "OpenAI baseline", subtitle: "Chat Completions", accent: "border-t-emerald-500" };
+  }
+  const left = DECISION_ENGINE_META[engine];
+  return { name: left.name, subtitle: left.subtitle, accent: "border-t-indigo-500" };
+}
 
 const STATUS_STYLE: Record<ProviderStatus, { label: string; className: string }> = {
   success: { label: "Success", className: "bg-emerald-50 text-emerald-700" },
@@ -28,16 +32,18 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
 
 export function ProviderPanel({
   provider,
+  engine,
   useCase,
   state,
   result,
 }: {
   provider: Provider;
+  engine: DecisionEngine;
   useCase: UseCase;
   state: RunState;
   result: ProviderResult | null;
 }) {
-  const meta = PROVIDER_META[provider];
+  const meta = providerMeta(provider, engine);
 
   return (
     <Card className={`border-t-4 ${meta.accent} flex flex-col`}>

@@ -127,7 +127,7 @@ export function qualityPolicy(results: Record<QualityCriterionId, boolean>): Qua
   return "Retry / improve";
 }
 
-/** OpenAI Decisions returns P(true) per criterion; the same 0.5 cut-off is applied to every criterion. */
+/** OpenAI Decisions (predicate) and Jev (noul) both return P(true); the same 0.5 cut-off is applied. */
 export const PREDICATE_PASS_THRESHOLD = 0.5;
 
 // ---- Shared input ----

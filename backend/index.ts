@@ -1,8 +1,8 @@
 import { createRoutes } from "./app";
-import { loadConfig } from "./config";
+import { decisionEngineName, loadConfig, typedDecisionConfigured } from "./config";
 import { openDatabase } from "./db";
 import { initTracing, shutdownTracing } from "./lib/tracing";
-import { createDecisionsProvider } from "./providers/decisions";
+import { createTypedDecisionProvider } from "./providers/engine";
 import { createOpenAIProvider } from "./providers/openai";
 
 initTracing();
@@ -15,14 +15,21 @@ const server = Bun.serve({
   routes: createRoutes({
     db,
     config,
-    decisions: createDecisionsProvider(config),
+    decisions: createTypedDecisionProvider(config),
     openai: createOpenAIProvider(config),
   }),
   fetch: () => Response.json({ error: { code: "not_found", message: "Route not found" } }, { status: 404 }),
 });
 
 console.log(`Backend listening on ${server.url} (CORS origin: ${config.frontendOrigin})`);
-if (!config.openai.apiKey) console.warn("OpenAI Decisions is not configured: set OPENAI_API_KEY");
+console.log(`Left-side engine: ${decisionEngineName(config.decisionEngine)} (JEV=${config.decisionEngine === "jev"})`);
+if (!typedDecisionConfigured(config)) {
+  if (config.decisionEngine === "jev") {
+    console.warn("Jev is not configured: set TYPESAFE_API_KEY and JEV_MODEL");
+  } else {
+    console.warn("OpenAI Decisions is not configured: set OPENAI_API_KEY");
+  }
+}
 if (!config.openai.apiKey || !config.openai.baselineModel) {
   console.warn("OpenAI is not configured: set OPENAI_API_KEY and OPENAI_BASELINE_MODEL");
 }

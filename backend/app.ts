@@ -1,5 +1,6 @@
 import type { BunRequest } from "bun";
 import { z } from "zod";
+import { typedDecisionConfigured, typedDecisionModel } from "./config";
 import { getEmail, insertEmail, listEmails, listRuns } from "./db/queries";
 import { benchmarkRunSchema, compareRequestSchema, createEmailSchema, useCaseSchema } from "./schemas";
 import { results, runBenchmark } from "./services/benchmarks";
@@ -69,8 +70,9 @@ export function createRoutes(deps: Deps) {
           providers: {
             // Reports whether configuration is present, never the values themselves.
             decisions: {
-              configured: Boolean(deps.config.openai.apiKey && deps.config.decisions.model),
-              model: deps.config.decisions.model,
+              engine: deps.config.decisionEngine,
+              configured: typedDecisionConfigured(deps.config),
+              model: typedDecisionModel(deps.config),
             },
             openai: {
               configured: Boolean(deps.config.openai.apiKey && deps.config.openai.baselineModel),

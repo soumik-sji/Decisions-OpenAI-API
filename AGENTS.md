@@ -4,11 +4,11 @@ Instructions for any coding agent working in this repo. Full product spec: `docs
 
 ## What this is
 
-A small, presentation-ready web app that lets an audience create a **simulated** email, pick **one** of three AI workflow use cases, and compare **OpenAI Decisions** (`POST /v1/decisions`) with an **OpenAI baseline** (Chat Completions + structured outputs) side by side on the **same input**.
+A small, presentation-ready web app that lets an audience create a **simulated** email, pick **one** of three AI workflow use cases, and compare a **typed-decision engine** (OpenAI Decisions or TypeSafe Jev) with an **OpenAI baseline** (Chat Completions + structured outputs) side by side on the **same input**.
 
 It is a learning artifact / proof of concept, not a production email system, a workflow platform, or a definitive benchmark. Timeline is 1 week.
 
-> **Provider change:** the demo originally compared Jev (TypeSafe API). Jev has been replaced by the OpenAI Decisions API, which has the same typed-question model (`choice` / `predicate` / `score` with probabilities). `docs/ROADMAP.md` still says "Jev"; read it as "OpenAI Decisions".
+> **Provider toggle:** the left side of the comparison is a typed-decision engine. `JEV=false` (default) uses OpenAI Decisions (`POST /v1/decisions`). `JEV=true` uses TypeSafe Jev (`POST /v1/systemone`). Both map onto the same internal `DecisionProvider` interface (`choice` / yes-no with probabilities). The right side is always the OpenAI baseline. `docs/ROADMAP.md` still says "Jev"; that is the left-side engine, whichever adapter is selected.
 
 **Scope rule:** If a feature doesn't help the audience understand OpenAI Decisions or compare it with the OpenAI baseline, don't build it. Defer it.
 
@@ -16,7 +16,7 @@ It is a learning artifact / proof of concept, not a production email system, a w
 
 1. **No fabricated results.** Show only real provider outputs, errors, and measured latency. A failed live call must never be silently replaced with a mock or guessed output. Show the error and allow a rerun.
 2. **Same input, fair comparison.** Decisions and the baseline get equivalent inputs and comparable instructions. Neither side ever sees the other's answer.
-3. **Secrets stay on the backend.** Never put API keys in `NEXT_PUBLIC_*` vars, browser code, logs, SQLite, or responses. The frontend never calls OpenAI directly.
+3. **Secrets stay on the backend.** Never put API keys in `NEXT_PUBLIC_*` vars, browser code, logs, SQLite, or responses. The frontend never calls OpenAI or TypeSafe directly.
 4. **No real email.** Mail Sender only creates a database record. No SMTP, Gmail, Outlook, or IMAP.
 5. **Honest metrics.** Agreement is not accuracy. Compute accuracy only against `expected_label`. Show cost only when real usage and pricing data exist. Show missing fields as "unavailable", never as `0` or an invented value. Never invent confidence scores for OpenAI.
 6. **Verify the Decisions API before coding against it.** Don't assume model IDs, question types, or response fields. Check https://developers.openai.com/api/docs/guides/decisions and run `bun run spike:decisions` first. The guide does not document a `model` echo or output token counts, so those are optional and shown as unavailable when absent.
@@ -59,8 +59,9 @@ jev/
     ├── index.ts         # Bun.serve routes
     ├── db/              # bun:sqlite setup + queries
     ├── providers/
-    │   ├── decisions.ts # OpenAI Decisions adapter: all Decisions request/response specifics live here
-    │   └── openai.ts    # OpenAI adapter
+    │   ├── decisions.ts # OpenAI Decisions adapter (used when JEV=false)
+    │   ├── jev.ts       # TypeSafe Jev adapter (used when JEV=true)
+    │   └── openai.ts    # OpenAI baseline adapter
     ├── usecases/        # email_detection, model_routing, response_quality
     ├── schemas/         # shared Zod schemas + normalized result shape
     └── data/            # demo.sqlite, seed sample emails
@@ -116,7 +117,10 @@ Enable CORS for `FRONTEND_ORIGIN` only.
 PORT=4000
 DATABASE_URL=./data/demo.sqlite
 FRONTEND_ORIGIN=http://localhost:3000
-OPENAI_API_KEY=             # used by both Decisions and the baseline
+JEV=false                   # true = TypeSafe Jev, false = OpenAI Decisions
+TYPESAFE_API_KEY=           # required when JEV=true
+JEV_MODEL=jev-latest
+OPENAI_API_KEY=             # used by OpenAI Decisions and the baseline
 OPENAI_DECISIONS_MODEL=gpt-6-luna
 OPENAI_BASELINE_MODEL=
 OPENAI_FAST_MODEL=

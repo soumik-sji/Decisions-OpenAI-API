@@ -5,6 +5,9 @@ import { resolve } from "node:path";
 
 export type Pricing = { inputPer1M: number; outputPer1M: number };
 
+/** Left-side typed-decision engine. `JEV=true` uses TypeSafe Jev; otherwise OpenAI Decisions. */
+export type DecisionEngine = "openai_decisions" | "jev";
+
 export type Config = {
   port: number;
   databasePath: string;
@@ -12,7 +15,9 @@ export type Config = {
   providerTimeoutMs: number;
   /** USD per 1M tokens per side, from env. Null when not configured: cost is then unavailable. */
   pricing: { decisions: Pricing | null; openai: Pricing | null };
+  decisionEngine: DecisionEngine;
   decisions: { model: string | null };
+  jev: { apiKey: string | null; baseUrl: string; model: string | null };
   openai: {
     apiKey: string | null;
     baseUrl: string;
@@ -35,6 +40,26 @@ function optional(name: string): string | null {
   return value ? value : null;
 }
 
+/** `JEV=true` / `1` / `yes` selects TypeSafe Jev. Anything else, including unset, is OpenAI Decisions. */
+export function parseDecisionEngine(value: string | undefined): DecisionEngine {
+  const v = value?.trim().toLowerCase();
+  if (v === "true" || v === "1" || v === "yes") return "jev";
+  return "openai_decisions";
+}
+
+export function decisionEngineName(engine: DecisionEngine): string {
+  return engine === "jev" ? "Jev" : "OpenAI Decisions";
+}
+
+export function typedDecisionConfigured(config: Config): boolean {
+  if (config.decisionEngine === "jev") return Boolean(config.jev.apiKey && config.jev.model);
+  return Boolean(config.openai.apiKey && config.decisions.model);
+}
+
+export function typedDecisionModel(config: Config): string | null {
+  return config.decisionEngine === "jev" ? config.jev.model : config.decisions.model;
+}
+
 export function loadConfig(): Config {
   const databaseUrl = optional("DATABASE_URL") ?? "./data/demo.sqlite";
   return {
@@ -43,9 +68,15 @@ export function loadConfig(): Config {
     frontendOrigin: optional("FRONTEND_ORIGIN") ?? "http://localhost:3000",
     providerTimeoutMs: Number(optional("PROVIDER_TIMEOUT_MS") ?? 30_000),
     pricing: { decisions: pricing("DECISIONS"), openai: pricing("BASELINE") },
+    decisionEngine: parseDecisionEngine(process.env.JEV),
     decisions: {
       // OpenAI Decisions shares OPENAI_API_KEY and OPENAI_BASE_URL with the baseline.
       model: optional("OPENAI_DECISIONS_MODEL") ?? "gpt-6-luna",
+    },
+    jev: {
+      apiKey: optional("TYPESAFE_API_KEY"),
+      baseUrl: optional("TYPESAFE_BASE_URL") ?? "https://api.typesafe.ai/v1",
+      model: optional("JEV_MODEL") ?? "jev-latest",
     },
     openai: {
       apiKey: optional("OPENAI_API_KEY"),

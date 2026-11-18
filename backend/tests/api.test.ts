@@ -17,7 +17,9 @@ const config: Config = {
   frontendOrigin: "http://localhost:3000",
   providerTimeoutMs: 1000,
   pricing: { decisions: null, openai: null },
+  decisionEngine: "openai_decisions",
   decisions: { model: "decisions-test" },
+  jev: { apiKey: null, baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest" },
   openai: {
     apiKey: "test",
     baseUrl: "http://unused",
@@ -87,6 +89,28 @@ describe("emails API", () => {
     expect(res.status).toBe(200);
     expect(JSON.stringify(body)).not.toContain('"test"');
     expect(res.headers.get("access-control-allow-origin")).toBe("http://localhost:3000");
+    expect(body.providers.decisions.engine).toBe("openai_decisions");
+  });
+
+  test("health reports Jev when that engine is selected", async () => {
+    server?.stop(true);
+    db = openDatabase(":memory:");
+    routes = createRoutes({
+      db,
+      config: {
+        ...config,
+        decisionEngine: "jev",
+        jev: { apiKey: "ts-secret", baseUrl: "https://api.typesafe.ai/v1", model: "jev-latest" },
+      },
+      decisions: fakeProvider("decisions", "Other"),
+      openai: fakeProvider("openai", "Other"),
+    });
+    server = Bun.serve({ port: 0, routes });
+    const body = (await (await api("/api/health")).json()) as any;
+    expect(body.providers.decisions.engine).toBe("jev");
+    expect(body.providers.decisions.configured).toBe(true);
+    expect(body.providers.decisions.model).toBe("jev-latest");
+    expect(JSON.stringify(body)).not.toContain("ts-secret");
   });
 
   test("creates, lists, and gets an email", async () => {
@@ -134,6 +158,7 @@ describe("compare", () => {
     expect(res.status).toBe(200);
     expect(body.comparison.agreement).toBe(false);
     expect(body.comparison.groundTruthCorrectness).toEqual({ expected: "Billing question", decisions: true, openai: false });
+    expect(body.decisionEngine).toBe("openai_decisions");
     expect(body.results.decisions.status).toBe("completed");
     expect(body.results.decisions.latencyMs).toBeGreaterThanOrEqual(0);
   });

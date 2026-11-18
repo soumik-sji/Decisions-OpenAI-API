@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { propagateAttributes, startActiveObservation } from "@langfuse/tracing";
-import type { Config, Pricing } from "../config";
+import { decisionEngineName, type Config, type DecisionEngine, type Pricing } from "../config";
 import { getEmail, insertEvaluation, insertRun, type Email } from "../db/queries";
 import { flushTracing } from "../lib/tracing";
 import { sanitizeError } from "../providers/http";
@@ -22,8 +22,12 @@ import type {
 import { computeCostUsd } from "../schemas";
 import type { EmailInput, UseCase } from "../usecases/definitions";
 
-export const LATENCY_METHOD =
-  "Wall-clock time measured on the backend around each provider HTTP request (includes network round trip). OpenAI Decisions and the baseline run concurrently.";
+export function latencyMethodFor(engine: DecisionEngine): string {
+  const left = decisionEngineName(engine);
+  return `Wall-clock time measured on the backend around each provider HTTP request (includes network round trip). ${left} and the baseline run concurrently.`;
+}
+
+export const LATENCY_METHOD = latencyMethodFor("openai_decisions");
 
 export type Deps = {
   db: Database;
@@ -275,6 +279,7 @@ export async function compare(
     useCase,
     evaluationId,
     input: snapshot,
+    decisionEngine: deps.config.decisionEngine,
     results: { decisions, openai },
     comparison: {
       agreement,
@@ -282,7 +287,7 @@ export async function compare(
         useCase === "email_detection" && email.expectedLabel
           ? { expected: email.expectedLabel, decisions: decisionsCorrect, openai: openaiCorrect }
           : null,
-      latencyMethod: LATENCY_METHOD,
+      latencyMethod: latencyMethodFor(deps.config.decisionEngine),
     },
   };
 

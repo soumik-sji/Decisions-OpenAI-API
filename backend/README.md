@@ -1,6 +1,8 @@
 # backend
 
-Bun API for the OpenAI Decisions vs. OpenAI baseline demo. Runs both providers on the same simulated email, normalizes their results, and stores every run. No real email is ever sent.
+Bun API for the typed-decision vs. OpenAI baseline demo. Runs both providers on the same simulated email, normalizes their results, and stores every run. No real email is ever sent.
+
+The left side is OpenAI Decisions by default (`JEV=false`). Set `JEV=true` to use TypeSafe Jev instead.
 
 ## Setup
 
@@ -8,6 +10,7 @@ Bun API for the OpenAI Decisions vs. OpenAI baseline demo. Runs both providers o
 bun install
 cp .env.example .env        # fill in keys and model IDs
 bun run spike:decisions     # makes one real OpenAI Decisions call
+bun run spike:jev           # makes one real TypeSafe Jev call (needs TYPESAFE_API_KEY)
 bun run seed                # 8 fictional, labelled demo emails (idempotent)
 bun run dev                 # http://localhost:4000
 bun test                    # unit + API tests (provider test doubles, no network)
@@ -49,7 +52,7 @@ index.ts              Bun.serve entry
 app.ts                routes, CORS (FRONTEND_ORIGIN only), error envelope
 config.ts             env loading
 db/                   bun:sqlite schema + queries
-providers/            decisions.ts, openai.ts (all provider-specific formats), http.ts (timeouts, redaction)
+providers/            decisions.ts, jev.ts, openai.ts (all provider-specific formats), http.ts (timeouts, redaction)
 usecases/definitions.ts  shared categories, tiers, criteria, policy
 services/             compare.ts (orchestration + persistence), benchmarks.ts (metrics)
 data/seed-emails.ts   curated labelled emails

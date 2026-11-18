@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DecisionEngine } from "../config";
 import {
   EMAIL_CATEGORY_LABELS,
   QUALITY_OUTCOMES,
@@ -113,6 +114,8 @@ export type ComparisonResponse = {
   useCase: z.infer<typeof useCaseSchema>;
   evaluationId: string;
   input: Record<string, unknown>;
+  /** Which adapter filled the left-side `decisions` result for this run. */
+  decisionEngine: DecisionEngine;
   results: { decisions: ProviderResult; openai: ProviderResult };
   comparison: Comparison;
 };

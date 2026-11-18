@@ -1,6 +1,6 @@
 import { getEmail, listEmails, listEvaluations, type Email, type EvaluationJoinedRow } from "../db/queries";
 import { USE_CASES, type UseCase } from "../usecases/definitions";
-import { AppError, compare, LATENCY_METHOD, type Deps } from "./compare";
+import { AppError, compare, latencyMethodFor, type Deps } from "./compare";
 
 type LatencyStats = { samples: number; medianMs: number | null; meanMs: number | null };
 
@@ -64,7 +64,12 @@ function providerSummary(rows: EvaluationJoinedRow[], p: "decisions" | "openai",
   };
 }
 
-export function summarize(useCase: UseCase, rows: EvaluationJoinedRow[], benchmarkId: string | null): BenchmarkSummary {
+export function summarize(
+  useCase: UseCase,
+  rows: EvaluationJoinedRow[],
+  benchmarkId: string | null,
+  engine: Deps["config"]["decisionEngine"] = "openai_decisions",
+): BenchmarkSummary {
   const comparable = rows.filter((r) => r.agreement !== null);
   const agreed = comparable.filter((r) => r.agreement === 1).length;
   return {
@@ -74,7 +79,7 @@ export function summarize(useCase: UseCase, rows: EvaluationJoinedRow[], benchma
     decisions: providerSummary(rows, "decisions", useCase),
     openai: providerSummary(rows, "openai", useCase),
     agreement: { agreed, comparable: comparable.length, rate: comparable.length ? agreed / comparable.length : null },
-    latencyMethod: LATENCY_METHOD,
+    latencyMethod: latencyMethodFor(engine),
     cost: null,
     costNote: "Unavailable: no verified per-model pricing is configured. Token usage is stored per run.",
   };
@@ -83,7 +88,12 @@ export function summarize(useCase: UseCase, rows: EvaluationJoinedRow[], benchma
 export function results(deps: Deps, filter: { useCase?: UseCase; benchmarkId?: string }): BenchmarkSummary[] {
   const useCases = filter.useCase ? [filter.useCase] : USE_CASES;
   return useCases.map((u) =>
-    summarize(u, listEvaluations(deps.db, { useCase: u, benchmarkId: filter.benchmarkId }), filter.benchmarkId ?? null),
+    summarize(
+      u,
+      listEvaluations(deps.db, { useCase: u, benchmarkId: filter.benchmarkId }),
+      filter.benchmarkId ?? null,
+      deps.config.decisionEngine,
+    ),
   );
 }
 
@@ -117,5 +127,10 @@ export async function runBenchmark(
       await compare(deps, email.id, req.useCase, { benchmarkId });
     }
   }
-  return summarize(req.useCase, listEvaluations(deps.db, { useCase: req.useCase, benchmarkId }), benchmarkId);
+  return summarize(
+    req.useCase,
+    listEvaluations(deps.db, { useCase: req.useCase, benchmarkId }),
+    benchmarkId,
+    deps.config.decisionEngine,
+  );
 }

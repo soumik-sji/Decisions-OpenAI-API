@@ -11,6 +11,9 @@ export type UseCase = (typeof USE_CASES)[number];
 
 export type Provider = "decisions" | "openai";
 
+/** Left-side engine selected by backend `JEV`. */
+export type DecisionEngine = "openai_decisions" | "jev";
+
 export type Email = {
   id: string;
   fromAddress: string;
@@ -69,8 +72,21 @@ export type Comparison = {
 export type CompareResponse = {
   emailId: string;
   useCase: UseCase;
+  decisionEngine: DecisionEngine;
   results: Record<Provider, ProviderResult>;
   comparison: Comparison;
+};
+
+export type HealthResponse = {
+  status: "ok";
+  providers: {
+    decisions: { engine: DecisionEngine; configured: boolean; model: string | null };
+    openai: {
+      configured: boolean;
+      baselineModel: string | null;
+      tierModels: { fast: string | null; balanced: string | null; capable: string | null };
+    };
+  };
 };
 
 export type ProcessingRun = {

@@ -1,13 +1,23 @@
 import type {
   CompareResponse,
   CreateEmailRequest,
+  DecisionEngine,
   Email,
+  HealthResponse,
   ProcessingRun,
   Provider,
   ProviderResult,
   ProviderStatus,
   UseCase,
 } from "./types";
+
+export const DECISION_ENGINE_META: Record<
+  DecisionEngine,
+  { name: string; subtitle: string; short: string }
+> = {
+  openai_decisions: { name: "OpenAI Decisions", subtitle: "Decisions API", short: "Decisions" },
+  jev: { name: "Jev", subtitle: "TypeSafe System One", short: "Jev" },
+};
 
 // The browser only ever talks to our backend. Provider keys never reach here.
 export const API_BASE_URL =
@@ -117,6 +127,7 @@ type BackendProviderResult = {
 type BackendCompareResponse = {
   emailId: string;
   useCase: UseCase;
+  decisionEngine?: DecisionEngine;
   results: Record<Provider, BackendProviderResult>;
   comparison: {
     agreement: boolean | null;
@@ -197,6 +208,7 @@ function toCompareResponse(r: BackendCompareResponse): CompareResponse {
   return {
     emailId: r.emailId,
     useCase: r.useCase,
+    decisionEngine: r.decisionEngine ?? "openai_decisions",
     results: {
       decisions: toProviderResult(r.useCase, r.results.decisions),
       openai: toProviderResult(r.useCase, r.results.openai),
@@ -230,6 +242,8 @@ export function errorMessage(err: unknown): string {
 }
 
 export const api = {
+  getHealth: () => request<HealthResponse>("/api/health"),
+
   listEmails: async () =>
     (await request<{ emails: BackendEmail[] }>("/api/emails")).emails.map(toEmail),
 

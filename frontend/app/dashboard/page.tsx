@@ -10,7 +10,7 @@ export default function DashboardPage() {
     <div className="max-w-5xl">
       <PageHeader
         title="Inbox"
-        description="Saved demo emails. Open one to run OpenAI Decisions and the OpenAI baseline on it side by side."
+        description="Saved demo emails. Open one to compare the typed-decision engine (OpenAI Decisions or Jev) with the OpenAI baseline."
         action={
           <Link href="/mail-sender" className={buttonPrimary}>
             New email

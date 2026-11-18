@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { api, errorMessage } from "@/lib/api";
+import { api, DECISION_ENGINE_META, errorMessage } from "@/lib/api";
 import {
   USE_CASES,
   type CompareResponse,
+  type DecisionEngine,
   type Email,
   type ProcessingRun,
   type UseCase,
@@ -42,6 +43,7 @@ export function ComparisonView({ emailId }: { emailId: string }) {
   const [runs, setRuns] = useState<Partial<Record<UseCase, RunState>>>({});
   const [history, setHistory] = useState<ProcessingRun[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [engine, setEngine] = useState<DecisionEngine>("openai_decisions");
 
   const loadEmail = useCallback(async () => {
     setEmailState({ kind: "loading" });
@@ -66,6 +68,12 @@ export function ComparisonView({ emailId }: { emailId: string }) {
   useEffect(() => {
     loadEmail();
     loadHistory();
+    api
+      .getHealth()
+      .then((h) => setEngine(h.providers.decisions.engine))
+      .catch(() => {
+        // Keep the default label if health is unreachable; compare still reports the engine.
+      });
   }, [loadEmail, loadHistory]);
 
   async function run(target: UseCase) {
@@ -111,6 +119,8 @@ export function ComparisonView({ emailId }: { emailId: string }) {
   const running = current.kind === "running";
   const result = current.kind === "done" ? current.data : null;
   const caseHistory = history?.filter((r) => r.useCase === useCase) ?? [];
+  const activeEngine = result?.decisionEngine ?? engine;
+  const left = DECISION_ENGINE_META[activeEngine];
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
@@ -119,7 +129,7 @@ export function ComparisonView({ emailId }: { emailId: string }) {
           <Link href="/dashboard" className="text-sm text-zinc-500 hover:text-zinc-800">
             ← Inbox
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">Decisions vs. Baseline</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{left.short} vs. Baseline</h1>
         </div>
         <span className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-medium text-zinc-600">
           Same input for both systems
@@ -192,12 +202,14 @@ export function ComparisonView({ emailId }: { emailId: string }) {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <ProviderPanel
           provider="decisions"
+          engine={activeEngine}
           useCase={useCase}
           state={current}
           result={result?.results.decisions ?? null}
         />
         <ProviderPanel
           provider="openai"
+          engine={activeEngine}
           useCase={useCase}
           state={current}
           result={result?.results.openai ?? null}
@@ -230,7 +242,7 @@ export function ComparisonView({ emailId }: { emailId: string }) {
               {caseHistory.slice(0, 10).map((r) => (
                 <tr key={r.id} className="border-t border-zinc-100">
                   <td className="py-1.5 text-zinc-600">{formatDate(r.createdAt)}</td>
-                  <td className="py-1.5">{r.provider === "decisions" ? "OpenAI Decisions" : r.provider === "openai" ? "OpenAI baseline" : r.provider}</td>
+                  <td className="py-1.5">{r.provider === "decisions" ? left.name : r.provider === "openai" ? "OpenAI baseline" : r.provider}</td>
                   <td className="py-1.5">{r.status.replace("_", " ")}</td>
                   <td className="py-1.5">{r.decision ?? r.error ?? "—"}</td>
                   <td className="py-1.5 text-right tabular-nums">

@@ -1,6 +1,8 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { requestJson, sanitizeError } from "../providers/http";
+import { parseDecisionEngine } from "../config";
 import { parseChoice, parseQuality as parseDecisionsQuality } from "../providers/decisions";
+import { parseChoice as parseJevChoice, parseQuality as parseJevQuality } from "../providers/jev";
 import { parseQuality as parseOpenAIQuality, parseStructured } from "../providers/openai";
 import { ProviderError } from "../providers/types";
 import { EMAIL_CATEGORIES, qualityPolicy } from "../usecases/definitions";
@@ -124,6 +126,74 @@ describe("OpenAI normalization", () => {
     expect(out.probabilities).toBeNull();
     expect(out.decision.criteria.every((c) => c.probability === null)).toBe(true);
     expect(out.usage).toEqual({ inputTokens: 50, outputTokens: 10 });
+  });
+});
+
+describe("JEV flag", () => {
+  test("true/1/yes selects Jev; anything else is OpenAI Decisions", () => {
+    expect(parseDecisionEngine("true")).toBe("jev");
+    expect(parseDecisionEngine("1")).toBe("jev");
+    expect(parseDecisionEngine("YES")).toBe("jev");
+    expect(parseDecisionEngine("false")).toBe("openai_decisions");
+    expect(parseDecisionEngine("0")).toBe("openai_decisions");
+    expect(parseDecisionEngine(undefined)).toBe("openai_decisions");
+    expect(parseDecisionEngine("")).toBe("openai_decisions");
+  });
+});
+
+const jevChoice = (choice: string) => ({
+  model: "jev-1.14.0",
+  answers: {
+    category: {
+      type: "choice",
+      choice,
+      confidence: 0.8,
+      probabilities: { billing_question: 0.8, support_request: 0.2 },
+    },
+  },
+  usage: { input_tokens: 100, output_tokens: 34 },
+});
+
+describe("Jev normalization", () => {
+  test("maps a choice answer to the shared category", () => {
+    const r = parseJevChoice(jevChoice("billing_question"), "category", EMAIL_CATEGORIES, "jev-latest");
+    expect(r.option.label).toBe("Billing question");
+    expect(r.confidence).toBe(0.8);
+    expect(r.probabilities).toEqual({ "Billing question": 0.8, "Support request": 0.2 });
+    expect(r.model).toBe("jev-1.14.0");
+  });
+
+  test("rejects a choice outside the allowed set", () => {
+    expectProviderError(
+      () => parseJevChoice(jevChoice("marketing"), "category", EMAIL_CATEGORIES, "m"),
+      "invalid_output",
+    );
+  });
+
+  test("rejects a response missing the expected answer", () => {
+    const res = { answers: { wrong: { type: "noul", noul: 0.4 } } };
+    expectProviderError(() => parseJevChoice(res, "category", EMAIL_CATEGORIES, "m"), "invalid_output");
+  });
+
+  test("rejects a malformed response", () => {
+    expectProviderError(() => parseJevChoice({ answers: "nope" }, "category", EMAIL_CATEGORIES, "m"), "invalid_output");
+  });
+
+  test("quality gate treats noul as P(true) with the shared 0.5 threshold", () => {
+    const res = {
+      answers: {
+        addresses_request: { type: "noul", noul: 0.9 },
+        accurate_and_grounded: { type: "noul", noul: 0.2 },
+        professional_tone: { type: "noul", noul: 0.95 },
+        safe_to_send: { type: "noul", noul: 0.7 },
+      },
+      usage: { input_tokens: 200, output_tokens: 40 },
+    };
+    const out = parseJevQuality(res, "jev-latest");
+    expect(out.decision.outcome).toBe("Human review");
+    expect(out.decision.failedCriteria).toEqual(["Grounded in the email"]);
+    expect(out.decision.criteria.find((c) => c.id === "accurate_and_grounded")?.probability).toBe(0.2);
+    expect(out.usage).toEqual({ inputTokens: 200, outputTokens: 40 });
   });
 });
 
